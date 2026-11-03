@@ -1370,14 +1370,33 @@ async function startStream(v, vid, paused = false) {
       if (done && ms.readyState === "open" && me.tracks.every(x => !x.sb.updating))
         ms.endOfStream();
     } catch (e) {
-      if (me.alive) streamStatus(`Stream stalled: ${e.message}`);
+      // A media error is me.fail's to handle; this is everything else.
+      if (me.alive && !vid.error) streamStatus(`Stream stalled: ${e.message}`);
     } finally { t.busy = false; }
   };
-  me.kick = () => me.tracks.forEach(pump);
+  // Kept as it goes, because a media error pauses the element on its own.
+  me.kick = () => { me.paused = vid.paused; me.tracks.forEach(pump); };
   vid.addEventListener("timeupdate", me.kick);
   vid.addEventListener("seeking", me.kick);
+  // A decoder can trip on a stretch it played fine before, and after that
+  // the element takes no more data. Start over from the same moment, a few
+  // times at most, so one hiccup does not end the video.
+  const began = Date.now();
+  me.fail = () => {
+    if (!me.alive || !vid.error) return;
+    const why = vid.error.message || `media error ${vid.error.code}`;
+    const tries = Date.now() - began > 60000 ? 1 : (v.tries || 0) + 1;
+    if (tries > 3) return streamStatus(`Stream stopped: ${why}`);
+    const at = vid.currentTime, wasPaused = me.paused;
+    stopStream();
+    startStream({...v, progress: at, tries}, vid, wasPaused).catch(e => {
+      if (current?.id === v.id) streamStatus(`Couldn't stream: ${e.message}`);
+    });
+  };
+  vid.addEventListener("error", me.fail);
   vid.currentTime = v.progress || 0;
   me.kick();
+  me.paused = paused;
   if (!paused) vid.play().catch(() => {});
 }
 
@@ -1390,6 +1409,7 @@ function stopStream() {
   if (stream.kick) {
     vid.removeEventListener("timeupdate", stream.kick);
     vid.removeEventListener("seeking", stream.kick);
+    vid.removeEventListener("error", stream.fail);
   }
   if (stream.objectUrl) URL.revokeObjectURL(stream.objectUrl);
   stream = null;
