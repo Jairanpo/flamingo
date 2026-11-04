@@ -201,14 +201,15 @@ def browse(cfg: dict, ref: str, timeout=None):
     that holds them all. A channel without one of the tabs simply has nothing
     in that section.
 
-    The three tabs are listed side by side, so browsing costs about as long as
-    the slowest of them rather than all three. `timeout` is for callers that
+    The Home tab is read too, for playlists featured there but missing from
+    the Playlists tab. The tabs are listed side by side, so browsing costs
+    about as long as the slowest of them rather than all of them. `timeout` is for callers that
     cannot wait forever -- the web UI browses with a request thread held open,
     where a wedged yt-dlp would hang the tab.
     """
     base = _channel_base(ref)
     jobs = {"course": (base + "/courses", None), "playlist": (base + "/playlists", None),
-            "live": (base + "/streams", 1)}
+            "featured": (base + "/featured", None), "live": (base + "/streams", 1)}
     with ThreadPoolExecutor(len(jobs)) as pool:
         futs = {k: pool.submit(_flat, cfg, url, timeout, end)
                 for k, (url, end) in jobs.items()}
@@ -227,12 +228,18 @@ def browse(cfg: dict, ref: str, timeout=None):
                 channel_id = e["playlist_id"]
 
     seen, found = set(), []
-    for section in ("course", "playlist"):
-        for e in got[section][0]:
+    # The Home tab's shelves can hold a playlist the Playlists tab leaves
+    # out. Only real playlists count there: its "Videos" or "Popular" shelves
+    # are the channel's own UU... lists, which the channel already covers.
+    for tab in ("course", "playlist", "featured"):
+        section = "playlist" if tab == "featured" else tab
+        for e in got[tab][0]:
             pid = e.get("id") or _list_id(e.get("url") or "")
             # A course is usually on the Playlists tab as well; it is shown
             # once, as the course it is.
             if not pid or not _PLAYLIST_ID_RE.match(pid) or pid in seen:
+                continue
+            if tab == "featured" and not pid.startswith(("PL", "OLAK")):
                 continue
             seen.add(pid)
             found.append({
