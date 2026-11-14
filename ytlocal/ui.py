@@ -44,7 +44,7 @@ PAGE = r"""<!doctype html>
   .who-src.more { cursor:pointer; }
   .who-src.more:hover { color:var(--accent); }
   .stats { color:var(--dim); font-size:13px; margin-left:auto; }
-  #shelve[hidden] { display:none; }
+  #shelve[hidden], #forget[hidden] { display:none; }
   main { padding:20px; flex:1; min-width:0; }
   .layout { display:flex; align-items:flex-start; }
   /* The sidebar scrolls on its own and stays put under the header. */
@@ -370,6 +370,7 @@ PAGE = r"""<!doctype html>
   <button class="chip" id="sidebtn" title="Channels and playlists">☰</button>
   <button class="who-src" id="whosrc" hidden></button>
   <button class="chip" id="shelve" hidden></button>
+  <button class="chip" id="forget" hidden>Forget</button>
   <select id="sort" title="Sort order (remembered per view)"></select>
   <div class="chips">
     <button class="chip" id="f-have"      aria-pressed="false">Downloaded</button>
@@ -769,8 +770,10 @@ $("#whosrc").onclick = () => {
 function paintShelve(sources) {
   const b = $("#shelve");
   const src = state.source && sources.find(s => s.id === state.source);
-  b.hidden = !src;
+  b.hidden = $("#forget").hidden = !src;
   if (!src) return;
+  $("#forget").title = "Stop tracking it. Downloaded files, stars and " +
+                       "collections stay; add it again any time.";
   b.textContent = src.shelved ? "Unshelve" : "Shelve";
   b.title = src.shelved
     ? "Bring it back into the picker, Everything and full syncs"
@@ -782,6 +785,16 @@ $("#shelve").onclick = async () => {
   if (!src) return;
   await post("/api/shelve", {source: src.id, value: !src.shelved});
   refresh();
+};
+$("#forget").onclick = async () => {
+  const src = state.sources.find(s => s.id === state.source);
+  if (!src) return;
+  const name = src.kind === "channel" ? `${src.name || src.url} (all videos)`
+                                      : src.name || src.url;
+  if (!confirm(`Stop tracking ${name}?\n\nDownloaded files, stars and ` +
+               `collections stay.`)) return;
+  await post("/api/forget", {source: src.id});
+  pick("");
 };
 
 function buildSorts(sorts, current) {

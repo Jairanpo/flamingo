@@ -349,6 +349,14 @@ class Handler(BaseHTTPRequestHandler):
                 value = bool(body.get("value", True))
                 db.set_shelved(self.conn, [sid], value)
                 return self._json({"ok": True, "shelved": value})
+            if url.path == "/api/forget":
+                sid = self._body().get("source") or ""
+                if not self.conn.execute("SELECT 1 FROM sources WHERE id = ?",
+                                         (sid,)).fetchone():
+                    return self._fail(404, "unknown source")
+                # Same as `yt forget`: downloads, stars and collections stay.
+                db.delete_source(self.conn, sid)
+                return self._json({"ok": True})
             if url.path == "/api/toggl":
                 body = self._body()
                 try:
