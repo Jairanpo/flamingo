@@ -186,6 +186,43 @@ def _flat(cfg, url, timeout=None, end=None):
     return entries, proc.stderr or ""
 
 
+def _show_lists(url, timeout=None):
+    """Playlists a channel's tab files as "shows": [{id, title}].
+
+    YouTube marks some playlists as shows (Driver61 has five such series),
+    and yt-dlp's tab listing skips them though each is an ordinary PL...
+    playlist. The page itself still lists them, so they are read from there.
+    Best effort: a failed fetch or a changed page yields nothing.
+    """
+    req = urllib.request.Request(url, headers={"User-Agent": UA,
+                                               "Accept-Language": "en"})
+    try:
+        with urllib.request.urlopen(req, timeout=min(timeout or 30, 30)) as resp:
+            html = resp.read().decode("utf-8", "replace")
+        m = re.search(r"var ytInitialData = (\{.*?\});</script>", html)
+        data = json.loads(m.group(1)) if m else {}
+    except (urllib.error.URLError, TimeoutError, OSError, ValueError):
+        return []
+    found = []
+
+    def walk(o):
+        if isinstance(o, dict):
+            lv = o.get("lockupViewModel")
+            if isinstance(lv, dict) and lv.get("contentType") == "LOCKUP_CONTENT_TYPE_SHOW":
+                pid = lv.get("contentId") or ""
+                title = (((lv.get("metadata") or {}).get("lockupMetadataViewModel") or {})
+                         .get("title") or {}).get("content")
+                if _PLAYLIST_ID_RE.match(pid):
+                    found.append({"id": pid, "title": title or pid})
+            for v in o.values():
+                walk(v)
+        elif isinstance(o, list):
+            for v in o:
+                walk(v)
+    walk(data)
+    return found
+
+
 # What Browse offers, in the order it offers it: a course is the most
 # deliberate lesson series a creator publishes, so it comes first.
 SECTIONS = ("course", "live", "playlist")
@@ -213,7 +250,10 @@ def browse(cfg: dict, ref: str, timeout=None):
     with ThreadPoolExecutor(len(jobs)) as pool:
         futs = {k: pool.submit(_flat, cfg, url, timeout, end)
                 for k, (url, end) in jobs.items()}
+        shows = pool.submit(_show_lists, base + "/playlists", timeout)
         got = {k: f.result() for k, f in futs.items()}
+    # Shows sit on the Playlists tab beside the rest; yt-dlp just skips them.
+    got["playlist"][0].extend(shows.result())
 
     owner = channel_id = None
     for entries, _ in got.values():
