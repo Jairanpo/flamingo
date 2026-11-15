@@ -1297,10 +1297,42 @@ async function readIndex(url) {
 
 // SourceBuffer work is asynchronous; this turns one call into a promise.
 const sbDo = (sb, fn) => new Promise((ok, bad) => {
-  sb.addEventListener("updateend", ok, {once: true});
-  sb.addEventListener("error", bad, {once: true});
-  try { fn(); } catch (e) { bad(e); }
+  const done = () => { sb.removeEventListener("updateend", done);
+                       sb.removeEventListener("error", fail); ok(); };
+  const fail = e => { sb.removeEventListener("updateend", done);
+                      sb.removeEventListener("error", fail); bad(e); };
+  sb.addEventListener("updateend", done);
+  sb.addEventListener("error", fail);
+  try { fn(); } catch (e) { fail(e); }
 });
+// Seconds already held past `at`, in the stretch that holds `at`.
+const heldAhead = (sb, at) => {
+  const b = sb.buffered;
+  for (let i = 0; i < b.length; i++)
+    if (b.start(i) <= at + 0.5 && at < b.end(i)) return b.end(i) - at;
+  return 0;
+};
+// The browser caps each buffer (Chrome: about 150 MB of picture). At 1440p
+// and up, a minute ahead plus half a minute behind does not fit. When it is
+// full, keep less behind and look less far ahead from then on, then wait for
+// playback to use some up. Says whether the piece went in.
+async function append(t, bytes, now) {
+  for (let trimmed = false; ; trimmed = true) {
+    try { await sbDo(t.sb, () => t.sb.appendBuffer(bytes)); return true; }
+    catch (e) {
+      if (e.name !== "QuotaExceededError") throw e;
+      t.behind = 5;
+      if (!trimmed && now > 5) {
+        await sbDo(t.sb, () => t.sb.remove(0, now - 5));
+        continue;
+      }
+      const ahead = heldAhead(t.sb, now);
+      if (ahead < 5) throw e;              // nothing to play through: truly stuck
+      t.ahead = Math.max(10, ahead * 0.8);
+      return false;
+    }
+  }
+}
 const buffered = (sb, s) => {
   const mid = (s.start + s.end) / 2, b = sb.buffered;
   for (let i = 0; i < b.length; i++) if (b.start(i) <= mid && mid < b.end(i)) return true;
@@ -1366,7 +1398,8 @@ async function startStream(v, vid, paused = false) {
   // Both buffers must exist before either gets data: once the first one
   // has its init segment, Chrome will not accept a second.
   me.tracks = idx.map(i => ({url: i.url, sb: ms.addSourceBuffer(meta[i.kind]),
-                             segs: i.segs, init: i.init, busy: false}));
+                             segs: i.segs, init: i.init, busy: false,
+                             ahead: AHEAD, behind: BEHIND, held: null}));
   await Promise.all(me.tracks.map(t => sbDo(t.sb, () => t.sb.appendBuffer(t.init))));
   if (!me.alive) return;
   if (meta.duration) ms.duration = meta.duration;
@@ -1381,21 +1414,17 @@ async function startStream(v, vid, paused = false) {
         // Let go of what is well behind, so an hour-long video does not
         // pile up in memory.
         const b = t.sb.buffered;
-        if (b.length && b.start(0) < now - BEHIND - 10)
-          await sbDo(t.sb, () => t.sb.remove(0, now - BEHIND));
-        const seg = t.segs.find(s => s.end > now && s.start < now + AHEAD
+        if (b.length && b.start(0) < now - t.behind - 10)
+          await sbDo(t.sb, () => t.sb.remove(0, now - t.behind));
+        const seg = t.segs.find(s => s.end > now && s.start < now + t.ahead
                                      && !buffered(t.sb, s));
         if (!seg) break;
-        const bytes = await rangeBytes(t.url, seg.lo, seg.hi);
+        // A piece that did not fit last time is kept, not fetched again.
+        const bytes = t.held?.seg === seg ? t.held.bytes
+                                          : await rangeBytes(t.url, seg.lo, seg.hi);
+        t.held = null;
         if (!me.alive) return;
-        try { await sbDo(t.sb, () => t.sb.appendBuffer(bytes)); }
-        catch (e) {
-          // Full: drop everything but the stretch around the playhead, retry.
-          if (e.name !== "QuotaExceededError") throw e;
-          await sbDo(t.sb, () => t.sb.remove(0, Math.max(0, now - 5)));
-          await sbDo(t.sb, () => t.sb.remove(now + AHEAD, Infinity));
-          await sbDo(t.sb, () => t.sb.appendBuffer(bytes));
-        }
+        if (!(await append(t, bytes, now))) { t.held = {seg, bytes}; break; }
       }
       // Tell the player there is no more once both tracks hold their last piece.
       const done = me.tracks.every(x => buffered(x.sb, x.segs[x.segs.length - 1]));
