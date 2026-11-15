@@ -263,13 +263,15 @@ PAGE = r"""<!doctype html>
            font-size:13.5px; color:#c3c0b8; }
   /* The Toggl timer, when a token is configured. Without one the whole row
      stays away rather than offering a button that cannot work. */
-  #ptoggl { display:flex; align-items:center; gap:10px; margin-top:12px; }
+  /* In Toggl's own pink and dark purple, so it reads as Toggl at a glance. */
+  #ptoggl { display:flex; align-items:center; gap:10px; margin-top:10px; }
   #ptoggl[hidden] { display:none; }
-  #tgbtn { border:1px solid rgba(233,231,227,.35); background:transparent;
-           color:#e9e7e3; border-radius:6px; padding:6px 12px; font:inherit;
+  #tgbtn { border:1px solid #e57cd8; background:transparent; color:#e57cd8;
+           border-radius:6px; padding:6px 12px; font:inherit; font-weight:600;
            font-size:13px; cursor:pointer; }
-  #tgbtn:hover { border-color:var(--accent); color:var(--accent); }
-  #tgbtn.on { background:var(--accent); border-color:var(--accent); color:#fff; }
+  #tgbtn:hover { background:rgba(229,124,216,.15); }
+  #tgbtn.on { background:#e57cd8; border-color:#e57cd8; color:#2c1338; }
+  #tgbtn.on:hover { background:#eb98e1; }
   #tgbtn:disabled { opacity:.55; cursor:default; }
   #tgwhat { color:#9b988f; font-size:12.5px; overflow:hidden;
             text-overflow:ellipsis; white-space:nowrap; }
@@ -1198,7 +1200,7 @@ function togglMount(v) {
     .map(t => (t || "").trim())
     .filter(t => t && !seen.has(t.toLowerCase()) && seen.add(t.toLowerCase()))
     .join(", ");
-  $("#pmeta").insertBefore(el, $("#pdesc"));
+  $("#psub").after(el);
   $("#tgbtn").onclick = togglClick;
   paintToggl_();
   togglPoll();
