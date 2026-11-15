@@ -280,13 +280,14 @@ class Handler(BaseHTTPRequestHandler):
                 # title can be the description without losing the creator.
                 tags = [t.strip() for t in (m.get("tags") or "").split(",") if t.strip()]
                 tags.append(f"youtube:{chan}")
-                # Watched from a playlist: the entry is named after it.
+                # A name set in the sheet wins; left blank, an entry watched
+                # from a playlist is named after it.
                 pl = self.conn.execute(
                     """SELECT s.name FROM sources s
                          JOIN source_videos sv ON sv.source_id = s.id
                         WHERE s.id = ? AND sv.video_id = ? AND s.kind != 'channel'""",
                     (body.get("source") or "", row["id"])).fetchone()
-                what = (pl["name"] if pl and pl["name"] else None) or m.get("name") or chan
+                what = m.get("name") or (pl["name"] if pl else None) or chan
                 try:
                     entry, missing = tg.start(self.cfg, what,
                                               m.get("project") or None, tags)

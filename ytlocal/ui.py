@@ -334,8 +334,10 @@ PAGE = r"""<!doctype html>
               font:inherit; font-size:13px; }
   #tgfilter:focus { outline:none; border-color:var(--accent); }
   #tgfilter[hidden], #tgswitch[hidden] { display:none; }
-  .tgrow .ch { grid-column:1/-1; font-size:12.5px; color:var(--dim);
+  .tgrow .head { grid-column:1/-1; display:flex; align-items:baseline; gap:8px; }
+  .tgrow .ch { flex:1; min-width:0; font-size:12.5px; color:var(--dim);
                overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .tgrow .link[hidden] { display:none; }
   .tgrow input { background:var(--bg); color:var(--ink); min-width:0;
                  border:1px solid var(--edge); border-radius:6px;
                  padding:6px 8px; font:inherit; font-size:13px; }
@@ -428,10 +430,10 @@ PAGE = r"""<!doctype html>
 <div id="tgmodal" class="sheet"><div class="box wide">
   <h3>Toggl Track <span class="count" id="tgscope"></span></h3>
   <div class="who hint">One row per channel: what to call it in Toggl, the
-    project it counts towards, and any tags. Leave a field blank and the
-    channel's own name stands in. Watched from a playlist, the entry takes the
-    playlist's title instead, and every entry is tagged
-    <code>youtube:&lt;channel&gt;</code> on its own. A project has to exist in
+    project it counts towards, and any tags. A name you set is always used.
+    Left blank, the name is automatic: the playlist's title when you watch
+    from one, else the channel's — <em>Reset name</em> goes back to that.
+    Every entry is tagged <code>youtube:&lt;channel&gt;</code> on its own. A project has to exist in
     Toggl already — it will not be created for you. Needs
     <code>toggl_token</code> in your config; without one the timer button
     stays away.</div>
@@ -1186,9 +1188,9 @@ function togglMount(v) {
   el.dataset.videoId = v.id;
   el.dataset.source = state.source || "";
   // What this click would file, spelled out before you click it -- the same
-  // rules the server applies: a playlist being watched names the entry, and
-  // the channel always rides along as a tag.
-  el.dataset.label = (src && src.kind !== "channel" && src.name) || m.name || chan;
+  // rules the server applies: a name you set wins, else the playlist being
+  // watched names the entry; the channel always rides along as a tag.
+  el.dataset.label = m.name || (src && src.kind !== "channel" && src.name) || chan;
   el.dataset.project = m.project || "";
   el.dataset.tags = [m.tags, chan && `youtube:${chan}`].filter(Boolean).join(", ");
   $("#pmeta").insertBefore(el, $("#pdesc"));
@@ -1717,18 +1719,26 @@ function paintToggl() {
 function togglRow(c) {
   const el = document.createElement("div");
   el.className = "tgrow";
+  const head = document.createElement("div");
+  head.className = "head";
   const label = document.createElement("div");
   label.className = "ch";
   label.textContent = c.channel;
   label.title = c.channel;
-  el.appendChild(label);
+  // Empties the name, so entries go back to being named automatically.
+  const reset = document.createElement("button");
+  reset.className = "link";
+  reset.textContent = "Reset name";
+  reset.title = "Name entries automatically: the playlist's title, else the channel's";
+  head.append(label, reset);
+  el.appendChild(head);
 
   const fields = {};
   for (const [key, ph] of [["name", "Name in Toggl"], ["project", "Project"],
                            ["tags", "Tags, comma separated"]]) {
     const inp = document.createElement("input");
     inp.value = c[key] || "";
-    inp.placeholder = key === "name" ? c.channel : ph;
+    inp.placeholder = key === "name" ? `Automatic: playlist, else ${c.channel}` : ph;
     inp.title = ph;
     inp.autocomplete = "off";
     inp.spellcheck = false;
@@ -1736,12 +1746,15 @@ function togglRow(c) {
     // channel and nothing here is destructive, so a trip to a button would be
     // the only hard part of the job.
     inp.oninput = () => {
+      reset.hidden = !fields.name.value.trim();
       clearTimeout(tgTimer);
       tgTimer = setTimeout(() => saveToggl(c, fields), 500);
     };
     fields[key] = inp;
     el.appendChild(inp);
   }
+  reset.hidden = !fields.name.value.trim();
+  reset.onclick = () => { fields.name.value = ""; fields.name.oninput(); };
   return el;
 }
 
