@@ -329,6 +329,12 @@ PAGE = r"""<!doctype html>
             max-height:min(58vh,440px); overflow-y:auto; }
   .tgrow { display:grid; gap:6px;
            grid-template-columns:repeat(3,minmax(0,1fr)); }
+  .tgrow.sub { margin-left:16px; }
+  #tgfilter { background:var(--bg); color:var(--ink); min-width:0;
+              border:1px solid var(--edge); border-radius:6px; padding:6px 8px;
+              font:inherit; font-size:13px; }
+  #tgfilter:focus { outline:none; border-color:var(--accent); }
+  #tgfilter[hidden], #tgswitch[hidden] { display:none; }
   .tgrow .ch { grid-column:1/-1; font-size:12.5px; color:var(--dim);
                overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .tgrow input { background:var(--bg); color:var(--ink); min-width:0;
@@ -383,7 +389,7 @@ PAGE = r"""<!doctype html>
           title="Track a channel or playlist">＋ source</button>
   <button class="chip" id="newcoll" title="New collection">＋ collection</button>
   <button class="chip" id="togglcfg"
-          title="How each channel shows up in Toggl Track">⏱ toggl</button>
+          title="How the open channel or playlist shows up in Toggl Track (or every channel, with none open)">⏱ toggl</button>
   <div id="viewprog" hidden><span class="track"><i></i></span><span></span></div>
   <div class="stats" id="stats"></div>
 </header>
@@ -421,12 +427,18 @@ PAGE = r"""<!doctype html>
 </div></div>
 
 <div id="tgmodal" class="sheet"><div class="box wide">
-  <h3>Toggl Track</h3>
-  <div class="who hint">One row per channel: what to call it in Toggl, the
-    project it counts towards, and any tags. Leave a field blank and the
-    channel's own name stands in. A project has to exist in Toggl already —
-    it will not be created for you. Needs <code>toggl_token</code> in your
-    config; without one the timer button stays away.</div>
+  <h3>Toggl Track <span class="count" id="tgscope"></span></h3>
+  <div class="who hint">What to call it in Toggl, the project it counts
+    towards, and any tags. A channel left blank files under its own name; a
+    playlist left blank files like its channel. A project has to exist in
+    Toggl already — it will not be created for you. Needs
+    <code>toggl_token</code> in your config; without one the timer button
+    stays away.</div>
+  <div class="bar2">
+    <input id="tgfilter" class="grow" placeholder="Filter channels…"
+           autocomplete="off" spellcheck="false">
+    <button class="link" id="tgswitch"></button>
+  </div>
   <div class="who hint" id="tgoff" hidden style="color:#d4705c">
     No <code>toggl_token</code> in your config yet, so nothing here can start a
     timer. Toggl → Profile settings → API token, then restart <code>yt
@@ -485,7 +497,7 @@ PAGE = r"""<!doctype html>
 <script>
 const state = { q:"", source:"", collection:"", have:null, starred:false,
                 unwatched:false, hidden:false, videos:[], ordered:false, sources:[],
-                collections:[], sort:"default", toggl:{}, togglChannels:[] };
+                collections:[], sort:"default", togglChannels:[], togglSources:{} };
 const $ = s => document.querySelector(s);
 const fmtDur = s => { if(!s) return ""; s=Math.round(s);
   const h=Math.floor(s/3600), m=Math.floor(s%3600/60), x=s%60;
@@ -532,8 +544,8 @@ async function refresh(opts) {
   state.sources = d.sources;
   state.collections = d.collections;
   state.sort = d.sort;
-  state.toggl = d.toggl || {};
   state.togglChannels = d.toggl_channels || [];
+  state.togglSources = d.toggl_sources || {};
   buildPicker(d.sources, d.collections);
   buildSorts(d.sorts, d.sort);
   const s = d.stats;
@@ -1164,19 +1176,29 @@ async function togglPoll() {
 function togglMount(v) {
   togglUnmount();
   if (!tgReady) return;
-  const m = state.toggl[(v.channel || "").trim()] || {};
   const el = document.createElement("div");
   el.id = "ptoggl";
   el.innerHTML = '<button id="tgbtn"></button><span id="tgwhat"></span>';
   el.dataset.videoId = v.id;
-  // What this click would file, spelled out before you click it.
-  el.dataset.label = m.name || v.channel || "";
-  el.dataset.project = m.project || "";
-  el.dataset.tags = m.tags || "";
+  el.dataset.source = state.source || "";
+  el.dataset.label = v.channel || "";
   $("#pmeta").insertBefore(el, $("#pdesc"));
   $("#tgbtn").onclick = togglClick;
   paintToggl_();
   togglPoll();
+  togglWhat(el);
+}
+// What this click would file, spelled out before you click it. The server
+// works it out -- a playlist's own settings may win over the channel's -- so
+// the words match what Start sends.
+async function togglWhat(el) {
+  try {
+    const m = await api(`/api/toggl/for?video=${encodeURIComponent(el.dataset.videoId)}` +
+                        `&source=${encodeURIComponent(el.dataset.source)}`);
+    if (!el.isConnected) return;
+    el.dataset.label = m.name; el.dataset.project = m.project; el.dataset.tags = m.tags;
+    paintToggl_();
+  } catch (e) {}
 }
 
 // The timer can be stopped or started in Toggl itself, so the button asks
@@ -1213,7 +1235,8 @@ async function togglClick() {
     const r = tgRunning
       ? await post("/api/toggl/stop", {id: tgRunning.id,
                                        workspace: tgRunning.workspace_id})
-      : await post("/api/toggl/start", {video: el.dataset.videoId});
+      : await post("/api/toggl/start", {video: el.dataset.videoId,
+                                        source: el.dataset.source});
     tgRunning = r.running && r.running.id ? r.running : null;
     if (r.project_missing)
       alert(`Started, but Toggl has no project called "${r.project_missing}" — ` +
@@ -1623,9 +1646,16 @@ document.addEventListener("keydown", e => {
   else dismissAllJobs();
 });
 
-/* ---- toggl sheet ---- */
-let tgTimer = null;
+/* ---- toggl sheet ----
+   Two views. With a channel or playlist open it shows just that one (and,
+   for a playlist, the channel settings it falls back to), so setting up what
+   you are watching needs no hunting. "All channels" lists every creator,
+   each followed by any of its playlists that have settings of their own. */
+let tgTimer = null, tgAll = false;
+const tgOpenSource = () => state.source && state.sources.find(s => s.id === state.source);
 function openToggl() {
+  tgAll = !tgOpenSource();
+  $("#tgfilter").value = "";
   paintToggl();
   // Say so up front rather than letting them fill in seven rows and then
   // wonder why no button ever turns up.
@@ -1637,40 +1667,82 @@ function closeToggl() {
   refresh(); togglPoll();
 }
 
+const tgBlank = {name: "", project: "", tags: ""};
+const tgChannel = name => state.togglChannels.find(c => c.channel === name)
+                          || {channel: name, ...tgBlank};
+// A playlist row: its own settings, with the channel's shown as what a blank
+// field falls back to.
+function tgSourceRow(src, sub) {
+  const ch = tgChannel(src.tgchannel);
+  const own = state.togglSources[src.id] || tgBlank;
+  return togglRow({source: src.id}, src.name, own, {
+    name: ch.name || ch.channel || src.name, project: ch.project || "Project",
+    tags: ch.tags || "Tags, comma separated"}, sub);
+}
+const tgChannelRow = (c, label) => togglRow({channel: c.channel}, label || c.channel, c,
+  {name: c.channel, project: "Project", tags: "Tags, comma separated"});
+
 function paintToggl() {
-  const box = $("#tgrows");
+  const box = $("#tgrows"), src = tgOpenSource();
   box.innerHTML = "";
+  $("#tgfilter").hidden = !tgAll;
+  $("#tgswitch").hidden = !src;
+  if (src) $("#tgswitch").textContent = tgAll ? `Only ${src.name}` : "All channels";
+  $("#tgscope").textContent = tgAll ? "· all channels" : `· ${src.name}`;
+
+  if (!tgAll) {
+    if (src.kind === "channel") {
+      box.appendChild(tgChannelRow(tgChannel(src.tgchannel)));
+    } else {
+      box.appendChild(tgSourceRow(src));
+      if (src.tgchannel && src.tgchannel !== src.name)
+        box.appendChild(tgChannelRow(tgChannel(src.tgchannel),
+                                     `Channel default — ${src.tgchannel}`));
+    }
+    return;
+  }
   if (!state.togglChannels.length) {
     box.innerHTML = '<div class="sub">No channels yet — track a source first.</div>';
     return;
   }
-  for (const c of state.togglChannels) box.appendChild(togglRow(c));
+  const q = $("#tgfilter").value.trim().toLowerCase();
+  const hit = (...xs) => !q || xs.some(x => (x || "").toLowerCase().includes(q));
+  for (const c of state.togglChannels) {
+    const own = state.sources.filter(s => s.kind !== "channel" && s.tgchannel === c.channel
+                                          && state.togglSources[s.id]);
+    const shown = own.filter(s => hit(c.channel, c.name, s.name));
+    if (!hit(c.channel, c.name) && !shown.length) continue;
+    box.appendChild(tgChannelRow(c));
+    for (const s of shown) box.appendChild(tgSourceRow(s, true));
+  }
+  if (!box.children.length)
+    box.innerHTML = '<div class="sub">Nothing matches.</div>';
 }
 
-function togglRow(c) {
+// One row: a label over three fields, saved as you type.
+function togglRow(target, label, values, holders, sub) {
   const el = document.createElement("div");
-  el.className = "tgrow";
-  const label = document.createElement("div");
-  label.className = "ch";
-  label.textContent = c.channel;
-  label.title = c.channel;
-  el.appendChild(label);
+  el.className = "tgrow" + (sub ? " sub" : "");
+  const lab = document.createElement("div");
+  lab.className = "ch";
+  lab.textContent = label;
+  lab.title = label;
+  el.appendChild(lab);
 
   const fields = {};
-  for (const [key, ph] of [["name", "Name in Toggl"], ["project", "Project"],
-                           ["tags", "Tags, comma separated"]]) {
+  for (const key of ["name", "project", "tags"]) {
     const inp = document.createElement("input");
-    inp.value = c[key] || "";
-    inp.placeholder = key === "name" ? c.channel : ph;
-    inp.title = ph;
+    inp.value = values[key] || "";
+    inp.placeholder = holders[key];
+    inp.title = {name: "Name in Toggl", project: "Project",
+                 tags: "Tags, comma separated"}[key];
     inp.autocomplete = "off";
     inp.spellcheck = false;
-    // Saved as you type rather than behind a Save button: there is one row per
-    // channel and nothing here is destructive, so a trip to a button would be
-    // the only hard part of the job.
+    // Saved as you type rather than behind a Save button: nothing here is
+    // destructive, so a trip to a button would be the only hard part.
     inp.oninput = () => {
       clearTimeout(tgTimer);
-      tgTimer = setTimeout(() => saveToggl(c, fields), 500);
+      tgTimer = setTimeout(() => saveToggl(target, fields), 500);
     };
     fields[key] = inp;
     el.appendChild(inp);
@@ -1678,16 +1750,13 @@ function togglRow(c) {
   return el;
 }
 
-async function saveToggl(c, fields) {
-  const patch = {channel: c.channel, name: fields.name.value,
+async function saveToggl(target, fields) {
+  const patch = {...target, name: fields.name.value,
                  project: fields.project.value, tags: fields.tags.value};
   try {
     const r = await post("/api/toggl", patch);
-    Object.assign(c, {name: patch.name, project: patch.project, tags: patch.tags});
     state.togglChannels = r.channels;
-    state.toggl = Object.fromEntries(r.channels
-      .filter(x => x.name || x.project || x.tags)
-      .map(x => [x.channel, {name: x.name, project: x.project, tags: x.tags}]));
+    state.togglSources = r.sources;
     note("saved");
   } catch (e) { note(e.message); }
 }
@@ -1697,6 +1766,8 @@ function note(text) {
              1600);
 }
 $("#togglcfg").onclick = openToggl;
+$("#tgswitch").onclick = () => { tgAll = !tgAll; $("#tgfilter").value = ""; paintToggl(); };
+$("#tgfilter").oninput = () => paintToggl();
 $("#tgdone").onclick = closeToggl;
 $("#tgmodal").onclick = e => { if (e.target.id === "tgmodal") closeToggl(); };
 

@@ -204,6 +204,11 @@ class Handler(BaseHTTPRequestHandler):
                 return self._sub_langs(path[len("/api/subs/"):])
             if path == "/api/toggl/status":
                 return self._toggl_status()
+            if path == "/api/toggl/for":
+                # What Start would file this video as, worked out the same way.
+                m = db.toggl_for(self.conn, (qs.get("video") or [""])[0],
+                                 (qs.get("source") or [""])[0])
+                return self._json(m) if m else self._fail(404, "unknown video")
             if path == "/api/jobs":
                 return self._json({"jobs": self._jobs()})
             if path.startswith("/thumb/"):
@@ -269,17 +274,13 @@ class Handler(BaseHTTPRequestHandler):
                 })
             if url.path == "/api/toggl/start":
                 body = self._body()
-                row = db.get_video(self.conn, body.get("video") or "")
-                if not row:
+                m = db.toggl_for(self.conn, body.get("video") or "", body.get("source"))
+                if not m:
                     return self._fail(404, "unknown video")
-                # Trimmed to match how the toggl sheet saved it: some channel
-                # names arrive from YouTube with a trailing space.
-                chan = (row["channel_name"] or row["channel_handle"] or "unknown").strip()
-                m = db.toggl_map(self.conn).get(chan, {})
-                tags = [t.strip() for t in (m.get("tags") or "").split(",") if t.strip()]
+                tags = [t.strip() for t in m["tags"].split(",") if t.strip()]
                 try:
-                    entry, missing = tg.start(self.cfg, m.get("name") or chan,
-                                              m.get("project") or None, tags)
+                    entry, missing = tg.start(self.cfg, m["name"],
+                                              m["project"] or None, tags)
                 except tg.TogglError as exc:
                     return self._fail(502, str(exc))
                 return self._json({"ok": True, "running": tg.as_json(entry),
@@ -359,13 +360,17 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"ok": True})
             if url.path == "/api/toggl":
                 body = self._body()
+                fields = (body.get("name"), body.get("project"), body.get("tags"))
                 try:
-                    db.set_toggl(self.conn, body.get("channel"),
-                                 body.get("name"), body.get("project"),
-                                 body.get("tags"))
+                    # A playlist's own settings, or a channel's.
+                    if body.get("source"):
+                        db.set_toggl_source(self.conn, body["source"], *fields)
+                    else:
+                        db.set_toggl(self.conn, body.get("channel"), *fields)
                 except ValueError as exc:
                     return self._fail(400, str(exc))
-                return self._json({"ok": True, "channels": db.toggl_channels(self.conn)})
+                return self._json({"ok": True, "channels": db.toggl_channels(self.conn),
+                                   "sources": db.toggl_sources(self.conn)})
             if url.path == "/api/topic":
                 body = self._body()
                 try:
@@ -439,6 +444,9 @@ class Handler(BaseHTTPRequestHandler):
              "creator": g["creator"] or s["creator"], "handle": s["handle"],
              "group": g["key"], "topic": topics.get(g["key"], ""),
              "owner": s["owner"],
+             # The creator row it files under in the Toggl sheet.
+             "tgchannel": ((s["name"] if s["kind"] == "channel"
+                            else s["owner"] or s["name"]) or "").strip(),
              "shelved": bool(s["shelved"]),
              "total": s["n_total"], "have": s["n_have"], "seen": s["n_seen"]}
             for g in db.by_creator(db.sources(self.conn))
@@ -475,10 +483,10 @@ class Handler(BaseHTTPRequestHandler):
             "sorts": [{"key": k, "label": sort_labels[k]} for k in db.SORTS],
             "stats": db.stats(self.conn),
             "jobs": self._jobs(),
-            # One row per creator, not per video: the player looks the current
-            # video's channel up in here when it lays out the Toggl mount.
-            "toggl": db.toggl_map(self.conn),
+            # The Toggl sheet's rows: one per creator, plus playlists that
+            # file differently from theirs.
             "toggl_channels": db.toggl_channels(self.conn),
+            "toggl_sources": db.toggl_sources(self.conn),
         })
 
     def _toggl_status(self):
