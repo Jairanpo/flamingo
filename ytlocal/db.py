@@ -105,18 +105,6 @@ CREATE TABLE IF NOT EXISTS toggl_map (
     set_at   INTEGER NOT NULL
 );
 
--- The same, for one playlist that should file differently from its channel
--- (a course with its own task id, say). A blank field falls back to the
--- channel's row; forgetting the playlist drops this with it.
-CREATE TABLE IF NOT EXISTS toggl_source (
-    source_id  TEXT PRIMARY KEY
-               REFERENCES sources(id) ON DELETE CASCADE ON UPDATE CASCADE,
-    name       TEXT,
-    project    TEXT,
-    tags       TEXT,
-    set_at     INTEGER NOT NULL
-);
-
 -- The shelf a creator sits on in the sidebar (Japanese, Unreal, Music...).
 -- Keyed on the creator's group key: their channel id, or "name:<creator>"
 -- for one known only through a playlist.
@@ -924,57 +912,6 @@ def set_toggl(conn, channel: str, name="", project="", tags="") -> None:
                     set_at = excluded.set_at""",
             (channel, name, project, tags, now()))
     conn.commit()
-
-
-def toggl_sources(conn) -> dict:
-    """{source id: {name, project, tags}} for every playlist with its own."""
-    return {r["source_id"]: {"name": r["name"] or "", "project": r["project"] or "",
-                             "tags": r["tags"] or ""}
-            for r in conn.execute("SELECT * FROM toggl_source")}
-
-
-def set_toggl_source(conn, sid: str, name="", project="", tags="") -> None:
-    """Save one playlist's own mapping, or drop it once it is all blank."""
-    if not conn.execute("SELECT 1 FROM sources WHERE id = ?", (sid,)).fetchone():
-        raise ValueError("unknown source")
-    name, project, tags = ((x or "").strip() for x in (name, project, tags))
-    if not (name or project or tags):
-        conn.execute("DELETE FROM toggl_source WHERE source_id = ?", (sid,))
-    else:
-        conn.execute(
-            """INSERT INTO toggl_source (source_id, name, project, tags, set_at)
-               VALUES (?, ?, ?, ?, ?)
-               ON CONFLICT(source_id) DO UPDATE SET name = excluded.name,
-                    project = excluded.project, tags = excluded.tags,
-                    set_at = excluded.set_at""",
-            (sid, name, project, tags, now()))
-    conn.commit()
-
-
-def toggl_for(conn, vid: str, source=None):
-    """What a timer for this video files as: {name, project, tags}, or None.
-
-    A playlist with its own settings wins over the channel, field by field:
-    the one being browsed when it holds the video, else whichever of the
-    video's playlists has settings (the earliest tracked). Blank fields fall
-    back to the channel's row, and the name finally to the channel itself.
-    """
-    row = get_video(conn, vid)
-    if not row:
-        return None
-    chan = (row["channel_name"] or row["channel_handle"] or "unknown").strip()
-    own = conn.execute(
-        """SELECT t.* FROM toggl_source t
-             JOIN source_videos sv ON sv.source_id = t.source_id
-             JOIN sources s ON s.id = t.source_id
-            WHERE sv.video_id = ?
-            ORDER BY (t.source_id = ?) DESC, s.added_at, s.id LIMIT 1""",
-        (vid, source or "")).fetchone()
-    base = toggl_map(conn).get(chan, {})
-    pick = lambda k: ((own[k] if own else "") or base.get(k) or "").strip()
-    return {"name": pick("name") or chan, "project": pick("project"),
-            "tags": pick("tags"), "channel": chan,
-            "source": own["source_id"] if own else None}
 
 
 # --- misc -----------------------------------------------------------------
