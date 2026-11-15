@@ -433,7 +433,8 @@ PAGE = r"""<!doctype html>
     project it counts towards, and any tags. A name you set is always used.
     Left blank, the name is automatic: the playlist's title when you watch
     from one, else the channel's — <em>Reset name</em> goes back to that.
-    Every entry is tagged <code>Youtube:&lt;channel&gt;</code> on its own. A project has to exist in
+    Every entry is tagged <code>Youtube</code> and
+    <code>Youtube:&lt;channel&gt;</code> on its own. A project has to exist in
     Toggl already — it will not be created for you. Needs
     <code>toggl_token</code> in your config; without one the timer button
     stays away.</div>
@@ -1192,7 +1193,11 @@ function togglMount(v) {
   // watched names the entry; the channel always rides along as a tag.
   el.dataset.label = m.name || (src && src.kind !== "channel" && src.name) || chan;
   el.dataset.project = m.project || "";
-  el.dataset.tags = [m.tags, chan && `Youtube:${chan}`].filter(Boolean).join(", ");
+  const seen = new Set();
+  el.dataset.tags = [...(m.tags || "").split(","), "Youtube", chan && `Youtube:${chan}`]
+    .map(t => (t || "").trim())
+    .filter(t => t && !seen.has(t.toLowerCase()) && seen.add(t.toLowerCase()))
+    .join(", ");
   $("#pmeta").insertBefore(el, $("#pdesc"));
   $("#tgbtn").onclick = togglClick;
   paintToggl_();
