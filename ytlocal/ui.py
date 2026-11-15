@@ -44,7 +44,7 @@ PAGE = r"""<!doctype html>
   .who-src.more { cursor:pointer; }
   .who-src.more:hover { color:var(--accent); }
   .stats { color:var(--dim); font-size:13px; margin-left:auto; }
-  #shelve[hidden], #forget[hidden] { display:none; }
+  #shelve[hidden], #forget[hidden], #pin[hidden] { display:none; }
   main { padding:20px; flex:1; min-width:0; }
   .layout { display:flex; align-items:flex-start; }
   /* The sidebar scrolls on its own and stays put under the header. */
@@ -137,6 +137,48 @@ PAGE = r"""<!doctype html>
   button.act:disabled { opacity:.55; cursor:default; }
   .icon { flex:0 0 auto; width:30px; padding:5px 4px; }
   .empty { color:var(--dim); text-align:center; padding:64px 20px; }
+  /* Home: the pinned priorities instead of the whole library. The banner's
+     colour says how many there are, from green (one: focus) to red (five:
+     attention spread too thin). */
+  #dash[hidden] { display:none; }
+  .dhead { display:flex; align-items:center; gap:12px; flex-wrap:wrap;
+           padding:12px 14px; border-radius:10px; margin-bottom:18px;
+           background:var(--panel); border:1px solid var(--edge);
+           border-left:6px solid var(--lv); }
+  .dlvl { background:var(--lv); color:#1a1a1a; font-weight:700; font-size:14px;
+          padding:4px 12px; border-radius:999px; white-space:nowrap; }
+  .dlvl.hot { color:#fff; }
+  .dsub { color:var(--ink); font-size:13.5px; flex:1; min-width:180px; }
+  .dsub .count { color:var(--dim); }
+  .dgrid { display:grid; gap:16px;
+           grid-template-columns:repeat(auto-fill, minmax(300px, 1fr)); }
+  .pcard { background:var(--panel); border:1px solid var(--edge); border-radius:10px;
+           padding:14px; display:flex; flex-direction:column; gap:8px;
+           box-shadow:var(--shadow); }
+  .pcard .ptop { display:flex; align-items:baseline; gap:8px; }
+  .pcard .pname { flex:1; min-width:0; font-weight:600; font-size:15px; text-align:left;
+                  background:none; border:0; padding:0; color:var(--ink); font-family:inherit;
+                  cursor:pointer; }
+  .pcard .pname:hover { color:var(--accent); }
+  .pcard .pwho { color:var(--dim); font-size:12.5px; }
+  .pcard .pbar { height:6px; border-radius:3px; background:var(--edge); overflow:hidden; }
+  .pcard .pbar i { display:block; height:100%; background:var(--ok); }
+  .pcard .pcount { color:var(--dim); font-size:12.5px; }
+  .pcard .pnext { display:flex; gap:10px; align-items:center; text-align:left;
+                  background:var(--bg); border:1px solid var(--edge); border-radius:8px;
+                  padding:6px; cursor:pointer; color:var(--ink); font:inherit; }
+  .pcard .pnext:hover { border-color:var(--accent); }
+  .pcard .pnext img { width:112px; aspect-ratio:16/9; object-fit:cover;
+                      border-radius:5px; flex:0 0 auto; }
+  .pcard .pnext .k { color:var(--dim); font-size:11.5px; text-transform:uppercase;
+                     letter-spacing:.04em; }
+  .pcard .pnext .t { font-size:13px; display:-webkit-box; -webkit-line-clamp:2;
+                     -webkit-box-orient:vertical; overflow:hidden; }
+  .pcard .pdone { color:var(--ok); font-size:13px; }
+  #dash .link { border:0; background:none; color:var(--accent); font:inherit;
+                font-size:12.5px; padding:2px 4px; cursor:pointer; }
+  #dash .link:hover { text-decoration:underline; }
+  @media (max-width:560px) { .dgrid { grid-template-columns:1fr; } }
   .empty.thin { padding:34px 20px 4px; }
   /* Watched videos sink out of the grid into a fold at the foot of the page,
      so what is still ahead of you keeps the top. Collapsing a card in place
@@ -169,7 +211,7 @@ PAGE = r"""<!doctype html>
   body.hasfold #jobs { bottom:62px; }
   /* A class selector outranks the browser's own [hidden] rule, so the
      display above would keep the list on screen while it is collapsed. */
-  .seenlist[hidden] { display:none; }
+  .seenlist[hidden], .fold[hidden] { display:none; }
   .srow { display:flex; align-items:center; gap:10px; padding:5px 6px;
           border-radius:7px; cursor:pointer; }
   .srow:hover { background:var(--panel); }
@@ -378,6 +420,7 @@ PAGE = r"""<!doctype html>
   <input type="search" id="q" placeholder="Search titles and descriptions…" autocomplete="off">
   <button class="chip" id="sidebtn" title="Channels and playlists">☰</button>
   <button class="who-src" id="whosrc" hidden></button>
+  <button class="chip" id="pin" hidden></button>
   <button class="chip" id="shelve" hidden></button>
   <button class="chip" id="forget" hidden>Forget</button>
   <select id="sort" title="Sort order (remembered per view)"></select>
@@ -404,6 +447,7 @@ PAGE = r"""<!doctype html>
   <nav id="sidetree"></nav>
 </aside>
 <main>
+  <div id="dash" hidden></div>
   <div class="grid" id="grid"></div>
   <div class="empty" id="empty" hidden></div>
 </main>
@@ -503,7 +547,8 @@ PAGE = r"""<!doctype html>
 <script>
 const state = { q:"", source:"", collection:"", have:null, starred:false,
                 unwatched:false, hidden:false, videos:[], ordered:false, sources:[],
-                collections:[], sort:"default", toggl:{}, togglChannels:[] };
+                collections:[], sort:"default", toggl:{}, togglChannels:[],
+                all:false, pins:[], maxPins:5 };
 const $ = s => document.querySelector(s);
 const fmtDur = s => { if(!s) return ""; s=Math.round(s);
   const h=Math.floor(s/3600), m=Math.floor(s%3600/60), x=s%60;
@@ -529,10 +574,11 @@ function params() {
   if (state.starred) p.set("starred", "1");
   if (state.unwatched) p.set("unwatched", "1");
   if (state.hidden) p.set("hidden", "1");
+  if (state.all) p.set("all", "1");
   return p.toString();
 }
 
-let pickerKey = "";
+let pickerKey = "", dashKey = "";
 // The sidebar sits right under the header, whose height changes as it wraps.
 new ResizeObserver(([e]) => document.documentElement.style
   .setProperty("--hh", `${e.target.offsetHeight}px`)).observe($("header"));
@@ -552,6 +598,8 @@ async function refresh(opts) {
   state.sort = d.sort;
   state.toggl = d.toggl || {};
   state.togglChannels = d.toggl_channels || [];
+  state.pins = d.pins || [];
+  state.maxPins = d.max_pins || 5;
   buildPicker(d.sources, d.collections);
   buildSorts(d.sorts, d.sort);
   const s = d.stats;
@@ -560,6 +608,7 @@ async function refresh(opts) {
     `${s.channels} channels · ${s.playlists} playlists` +
     (s.hidden ? ` · ${s.hidden} hidden` : "");
   render(d.videos);
+  paintDash();
   paintViewProgress();
   renderJobs(d.jobs);
 }
@@ -597,9 +646,11 @@ function buildPicker(sources, colls) {
   // would throw away what you were typing.
   if ($("#side .tedit")) return;
   const key = JSON.stringify([sources.map(s => [s.id, s.group, s.topic, s.section,
-                                                 s.creator, s.shelved, s.seen, s.total]),
+                                                 s.creator, s.shelved, s.pinned,
+                                                 s.seen, s.total]),
                               colls.map(c => [c.id, c.seen, c.total]),
-                              sideFilter, [...sideOpen], state.source, state.collection]);
+                              sideFilter, [...sideOpen], state.source, state.collection,
+                              state.all, state.pins.map(p => p.id)]);
   if (key === pickerKey) return;
   pickerKey = key;
   paintSide(sources, colls);
@@ -645,7 +696,9 @@ function paintSide(sources, colls) {
     return open;
   };
 
-  tree.append(row("Everything", "", {}, 0));
+  // With pins, home is the priorities dashboard and Everything its own view.
+  if (state.pins.length) tree.append(row(`📌 Priorities · ${state.pins.length}`, "", {}, 0));
+  tree.append(row("Everything", state.pins.length ? "all" : "", {}, 0));
 
   // Group live sources by creator (the server sends them already ordered),
   // then creators by topic.
@@ -687,7 +740,8 @@ function paintSide(sources, colls) {
         onName: chan ? () => pick("s:" + chan.id) : null});
       if (!open) continue;
       for (const s of c.items)
-        tree.append(row(s.kind === "channel" ? `${glyph(s)} All videos` : `${glyph(s)} ${s.name}`,
+        tree.append(row((s.pinned ? "📌 " : "") +
+                        (s.kind === "channel" ? `${glyph(s)} All videos` : `${glyph(s)} ${s.name}`),
                         "s:" + s.id, s, depth + 1));
     }
   }
@@ -706,11 +760,13 @@ function paintSide(sources, colls) {
 }
 
 const activeId = () => state.source ? "s:" + state.source
-                     : state.collection ? "c:" + state.collection : "";
+                     : state.collection ? "c:" + state.collection
+                     : state.all && state.pins.length ? "all" : "";
 
 function pick(id) {
   state.source     = id.startsWith("s:") ? id.slice(2) : "";
   state.collection = id.startsWith("c:") ? id.slice(2) : "";
+  state.all        = id === "all";
   document.body.classList.remove("side-on");          // phone: get out of the way
   refresh({push: true});
 }
@@ -788,8 +844,14 @@ $("#whosrc").onclick = () => {
 function paintShelve(sources) {
   const b = $("#shelve");
   const src = state.source && sources.find(s => s.id === state.source);
-  b.hidden = $("#forget").hidden = !src;
+  b.hidden = $("#forget").hidden = $("#pin").hidden = !src;
   if (!src) return;
+  const pb = $("#pin"), full = !src.pinned && state.pins.length >= state.maxPins;
+  pb.textContent = src.pinned ? "📌 Unpin" : "📌 Pin";
+  pb.disabled = full;
+  pb.title = src.pinned ? "Take it off the home dashboard"
+           : full ? `${state.maxPins} pins already — finish and unpin one first`
+           : "Put it on the home dashboard as a current priority";
   $("#forget").title = "Stop tracking it. Downloaded files, stars and " +
                        "collections stay; add it again any time.";
   b.textContent = src.shelved ? "Unshelve" : "Shelve";
@@ -802,6 +864,13 @@ $("#shelve").onclick = async () => {
   const src = state.sources.find(s => s.id === state.source);
   if (!src) return;
   await post("/api/shelve", {source: src.id, value: !src.shelved});
+  refresh();
+};
+$("#pin").onclick = async () => {
+  const src = state.sources.find(s => s.id === state.source);
+  if (!src) return;
+  try { await post("/api/pin", {source: src.id, value: !src.pinned}); }
+  catch (e) { alert(e.message); }
   refresh();
 };
 $("#forget").onclick = async () => {
@@ -855,6 +924,8 @@ function render(vs) {
   fold.hidden = true;
   document.body.classList.remove("hasfold");
   empty.classList.remove("thin");
+  empty.hidden = true;
+  if (isHome()) return;
   empty.hidden = vs.length > 0;
   if (!vs.length) {
     empty.textContent = state.hidden
@@ -885,6 +956,88 @@ function render(vs) {
   list.innerHTML = "";
   seen.forEach(v => list.appendChild(seenRow(v)));
   paintFold();
+}
+
+/* ---- home: pinned priorities ----
+   A short list of what you are working through, in place of the whole
+   library. One pin is ideal; each one more is a little less focus. */
+const LEVELS = [
+  null,
+  {word: "Focus",       color: "#22c55e", say: "One priority — the ideal amount."},
+  {word: "Optimal",     color: "#84cc16", say: "Two priorities — really good."},
+  {word: "Good",        color: "#c5d41f", say: "Three priorities — fine, but keep it here."},
+  {word: "Not optimal", color: "#f59e0b", say: "Four priorities — attention is starting to split. Finish one."},
+  {word: "Scattered attention", color: "#ef4444", hot: true,
+   say: "Five priorities — too much at once. Finish something and unpin it."},
+];
+const isHome = () => !state.source && !state.collection && !state.q && !state.all
+  && state.have === null && !state.starred && !state.unwatched && !state.hidden
+  && state.pins.length > 0;
+
+function paintDash() {
+  const box = $("#dash");
+  box.hidden = !isHome();
+  if (box.hidden) { box.replaceChildren(); dashKey = ""; return; }
+  // Unchanged since last time: leave it be rather than redraw every card.
+  const key = JSON.stringify([state.pins, state.pins.map(p =>
+    state.sources.find(x => x.id === p.id))]);
+  if (key === dashKey) return;
+  dashKey = key;
+  const n = state.pins.length;
+  const lv = LEVELS[Math.min(n, LEVELS.length - 1)];
+  box.innerHTML = `
+    <div class="dhead" style="--lv:${lv.color}">
+      <span class="dlvl${lv.hot ? " hot" : ""}"></span>
+      <span class="dsub"><span class="say"></span>
+        <span class="count"> · ${n} of ${state.maxPins} pins</span></span>
+      <button class="link" id="dall">All videos →</button>
+    </div>
+    <div class="dgrid"></div>`;
+  box.querySelector(".dlvl").textContent = lv.word;
+  box.querySelector(".say").textContent = lv.say;
+  $("#dall").onclick = () => pick("all");
+  const grid = box.querySelector(".dgrid");
+  for (const p of state.pins) {
+    const s = state.sources.find(x => x.id === p.id);
+    if (s) grid.appendChild(pinCard(s, p.next));
+  }
+}
+
+function pinCard(s, next) {
+  const el = document.createElement("div");
+  el.className = "pcard";
+  const left = Math.max(0, s.total - s.seen);
+  el.innerHTML = `
+    <div class="ptop"><button class="pname"></button>
+      <button class="link unpin" title="Take it off the dashboard">Unpin</button></div>
+    <div class="pwho"></div>
+    <div class="pbar"><i style="width:${s.total ? 100 * s.seen / s.total : 0}%"></i></div>
+    <div class="pcount">✓ ${s.seen} of ${s.total} watched${left ? ` · ${left} to go` : ""}</div>`;
+  el.querySelector(".pname").textContent =
+    `${glyph(s)} ${s.kind === "channel" ? s.name + " — all videos" : s.name}`;
+  el.querySelector(".pname").onclick = () => pick("s:" + s.id);
+  el.querySelector(".pwho").textContent = s.creator || "";
+  el.querySelector(".unpin").onclick = async () => {
+    await post("/api/pin", {source: s.id, value: false});
+    refresh();
+  };
+  if (next) {
+    const b = document.createElement("button");
+    b.className = "pnext";
+    b.title = "Play the next one";
+    b.innerHTML = `<img loading="lazy" src="/thumb/${next.id}" alt="">
+      <span><span class="k">Next up${next.duration ? " · " + fmtDur(next.duration) : ""}</span>
+      <span class="t"></span></span>`;
+    b.querySelector(".t").textContent = next.title;
+    b.onclick = () => open_(next, s.id);
+    el.appendChild(b);
+  } else {
+    const d = document.createElement("div");
+    d.className = "pdone";
+    d.textContent = "All watched — unpin it to make room for the next priority.";
+    el.appendChild(d);
+  }
+  return el;
 }
 
 function paintViewProgress() {
@@ -1129,7 +1282,7 @@ addEventListener("scroll", closeQualityMenu, {passive: true});
 let current = null, saveTimer = null;
 // Share of a video past which it counts as finished.
 const FINISHED = 0.92;
-function open_(v) {
+function open_(v, from) {
   // Resuming a finished video lands on its last frame, which fires "ended"
   // and shuts the player straight away, so start those over instead.
   const at = v.duration && v.progress / v.duration >= FINISHED ? 0 : v.progress || 0;
@@ -1144,7 +1297,7 @@ function open_(v) {
   showChapters([], v.id);
   showMarks([], v.id);
   api(`/api/marks/${v.id}`).then(d => showMarks(d.marks, v.id)).catch(() => {});
-  togglMount(v);
+  togglMount(v, from);
   $("#player").classList.add("on");
   if (v.have) {
     vid.src = `/media/${v.id}`;
@@ -1179,17 +1332,18 @@ async function togglPoll() {
   paintToggl_();
 }
 
-function togglMount(v) {
+function togglMount(v, from) {
   togglUnmount();
   if (!tgReady) return;
   const chan = (v.channel || "").trim();
   const m = state.toggl[chan] || {};
-  const src = state.source && state.sources.find(s => s.id === state.source);
+  const sid = from || state.source;
+  const src = sid && state.sources.find(s => s.id === sid);
   const el = document.createElement("div");
   el.id = "ptoggl";
   el.innerHTML = '<button id="tgbtn"></button><span id="tgwhat"></span>';
   el.dataset.videoId = v.id;
-  el.dataset.source = state.source || "";
+  el.dataset.source = sid || "";
   // What this click would file, spelled out before you click it -- the same
   // rules the server applies: a name you set wins, else the playlist being
   // watched names the entry; the channel always rides along as a tag.
@@ -2113,6 +2267,7 @@ function restoreFromUrl() {
   state.starred = p.get("starred") === "1";
   state.unwatched = p.get("unwatched") === "1";
   state.hidden = p.get("hidden") === "1";
+  state.all = p.get("all") === "1";
   $("#q").value = state.q;
   $("#f-have").setAttribute("aria-pressed", String(state.have === true));
   for (const [id, on] of [["#f-starred", state.starred],

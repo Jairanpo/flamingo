@@ -366,6 +366,14 @@ class Handler(BaseHTTPRequestHandler):
                 value = bool(body.get("value", True))
                 db.set_shelved(self.conn, [sid], value)
                 return self._json({"ok": True, "shelved": value})
+            if url.path == "/api/pin":
+                body = self._body()
+                try:
+                    db.set_pinned(self.conn, body.get("source") or "",
+                                  bool(body.get("value", True)))
+                except ValueError as exc:
+                    return self._fail(400, str(exc))
+                return self._json({"ok": True})
             if url.path == "/api/forget":
                 sid = self._body().get("source") or ""
                 if not self.conn.execute("SELECT 1 FROM sources WHERE id = ?",
@@ -460,6 +468,7 @@ class Handler(BaseHTTPRequestHandler):
              "tgchannel": ((s["name"] if s["kind"] == "channel"
                             else s["owner"] or s["name"]) or "").strip(),
              "shelved": bool(s["shelved"]),
+             "pinned": bool(s["pinned_at"]),
              "total": s["n_total"], "have": s["n_have"], "seen": s["n_seen"]}
             for g in db.by_creator(db.sources(self.conn))
             for s in ([g["channel"]] if g["channel"] else []) + g["items"]
@@ -497,6 +506,13 @@ class Handler(BaseHTTPRequestHandler):
             "jobs": self._jobs(),
             # One row per creator, not per video: the player looks the current
             # video's channel up in here when it lays out the Toggl mount.
+            # The home dashboard: each pinned source with the next video to
+            # watch in it, in the order it was pinned.
+            "pins": [{"id": p["id"], "next": next((row_to_json(r) for r in db.query_videos(
+                          self.conn, source=p["id"], unwatched=True, limit=1,
+                          sort=db.get_sort(self.conn, p["id"], None))), None)}
+                     for p in db.pinned(self.conn)],
+            "max_pins": db.MAX_PINS,
             "toggl": db.toggl_map(self.conn),
             "toggl_channels": db.toggl_channels(self.conn),
         })

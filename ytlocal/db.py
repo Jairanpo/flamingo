@@ -25,6 +25,8 @@ CREATE TABLE IF NOT EXISTS sources (
     -- Put away for later: still tracked, still browsable by name, but out of
     -- the picker, out of Everything and out of a full sync until you want it.
     shelved     INTEGER NOT NULL DEFAULT 0,
+    -- On the home dashboard as a current priority; when, so pins keep order.
+    pinned_at   INTEGER,
     url         TEXT NOT NULL,
     added_at    INTEGER NOT NULL,
     last_sync   INTEGER
@@ -245,6 +247,8 @@ def _add_missing_columns(conn) -> None:
     if "shelved" not in have_src:
         conn.execute(
             "ALTER TABLE sources ADD COLUMN shelved INTEGER NOT NULL DEFAULT 0")
+    if "pinned_at" not in have_src:
+        conn.execute("ALTER TABLE sources ADD COLUMN pinned_at INTEGER")
     # A channel is its own root. A playlist learns its channel on its next
     # sync; until then the library matches it up by the creator's name.
     conn.execute("UPDATE sources SET channel_id = id "
@@ -416,6 +420,32 @@ def by_creator(rows) -> list:
                                        (r["name"] or r["url"]).lower()))
     return sorted(groups.values(),
                   key=lambda g: (g["creator"] is None, (g["creator"] or "").lower()))
+
+
+# Pins are priorities to focus on: one is ideal, three is plenty, and past
+# five the dashboard has stopped being a short list.
+MAX_PINS = 5
+
+
+def pinned(conn) -> list:
+    """Pinned sources, oldest pin first, with the counts sources() carries."""
+    return sorted((r for r in sources(conn) if r["pinned_at"]),
+                  key=lambda r: r["pinned_at"])
+
+
+def set_pinned(conn, sid: str, value: bool) -> None:
+    if not conn.execute("SELECT 1 FROM sources WHERE id = ?", (sid,)).fetchone():
+        raise ValueError("unknown source")
+    if value:
+        n = conn.execute("SELECT COUNT(*) FROM sources WHERE pinned_at IS NOT NULL "
+                         "AND id != ?", (sid,)).fetchone()[0]
+        if n >= MAX_PINS:
+            raise ValueError(f"{MAX_PINS} pins already — finish and unpin one first")
+        conn.execute("UPDATE sources SET pinned_at = COALESCE(pinned_at, ?) "
+                     "WHERE id = ?", (now(), sid))
+    else:
+        conn.execute("UPDATE sources SET pinned_at = NULL WHERE id = ?", (sid,))
+    conn.commit()
 
 
 def set_shelved(conn, ids, value: bool) -> int:
