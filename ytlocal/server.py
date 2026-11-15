@@ -277,13 +277,9 @@ class Handler(BaseHTTPRequestHandler):
                 chan = (row["channel_name"] or row["channel_handle"] or "unknown").strip()
                 m = db.toggl_map(self.conn).get(chan, {})
                 # Every entry says which channel it came from, so a playlist's
-                # title can be the description without losing the creator,
-                # and carries a plain "youtube" for filtering all of it at once.
-                # All lowercase, so a channel restyling its name, or a tag typed
-                # "Youtube" once and "youtube" the next, stays one tag in Toggl.
-                tags = [t.strip() for t in (m.get("tags") or "").split(",")]
-                tags = list(dict.fromkeys(
-                    t.lower() for t in tags + ["youtube", f"youtube:{chan}"] if t))
+                # title can be the description without losing the creator.
+                tags = [t.strip() for t in (m.get("tags") or "").split(",") if t.strip()]
+                tags.append(f"Youtube:{chan}")
                 # A name set in the sheet wins; left blank, an entry watched
                 # from a playlist is named after it.
                 pl = self.conn.execute(
