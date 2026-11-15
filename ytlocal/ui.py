@@ -966,9 +966,9 @@ const LEVELS = [
   {word: "Focus",       color: "#22c55e", say: "One priority — the ideal amount."},
   {word: "Optimal",     color: "#84cc16", say: "Two priorities — really good."},
   {word: "Good",        color: "#c5d41f", say: "Three priorities — fine, but keep it here."},
-  {word: "Not optimal", color: "#f59e0b", say: "Four priorities — attention is starting to split. Finish one."},
+  {word: "Not optimal", color: "#f59e0b", say: "Four priorities — you're switching more than progressing. Finish one."},
   {word: "Scattered attention", color: "#ef4444", hot: true,
-   say: "Five priorities — too much at once. Finish something and unpin it."},
+   say: "Five priorities — you're wasting time juggling. Finish something and unpin it now."},
 ];
 const isHome = () => !state.source && !state.collection && !state.q && !state.all
   && state.have === null && !state.starred && !state.unwatched && !state.hidden
