@@ -30,18 +30,21 @@ func TestHealthzAgainstPostgres(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer pool.Close()
+	t.Cleanup(pool.Close) // cleanups run last-in first-out:
 	mig, err := db.NewMigrator(pool)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer mig.Close()
+	t.Cleanup(func() { mig.Close() }) // so these close after the rollback below
 	if _, err := mig.Up(ctx); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
 		for {
 			if _, err := mig.Down(ctx); err != nil {
+				if v, _ := mig.Version(ctx); v != 0 {
+					t.Errorf("rollback stopped at version %d: %v", v, err)
+				}
 				return
 			}
 		}
