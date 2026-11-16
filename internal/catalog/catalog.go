@@ -22,6 +22,7 @@ import (
 type Lister interface {
 	List(ctx context.Context, url string, limit int) (ytdlp.Meta, []ytdlp.Entry, error)
 	Browse(ctx context.Context, ref string) (string, []ytdlp.BrowseItem, error)
+	Chapters(ctx context.Context, vid string) ([]ytdlp.Chapter, error)
 }
 
 type Catalog struct {

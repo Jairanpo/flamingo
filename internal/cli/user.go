@@ -163,7 +163,7 @@ func userCmd(load loader) *cobra.Command {
 	}
 	remove.Flags().BoolVar(&yes, "yes", false, "really delete")
 
-	cmd.AddCommand(add, passwd, list, role, signout, remove)
+	cmd.AddCommand(add, passwd, list, role, signout, remove, userTogglCmd(load))
 	return cmd
 }
 

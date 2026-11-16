@@ -248,6 +248,19 @@ until the switch-over in phase 7.
    - Job cards are per person and live in memory, as before.
    - The server image carries a pinned, checksum-checked yt-dlp.
    - Still manual: nothing runs `flamingo sync` on a schedule yet.
+   *Step 4c done 2026-11-16:* media and the timer. Phase 4 is complete.
+   - Thumbnails, chapters, stream info and the stream byte relay, as
+     before. Thumbnails and chapters are shared: fetched once for everyone.
+   - The stream's starting quality is `ytdlp.stream_max_height` on the
+     server (1080); the player still offers every height.
+   - Toggl start, stop and status per person. Each token is sealed with
+     `auth.secret_key_file` (AES-256-GCM) in `toggl_accounts`, and set
+     with `flamingo user toggl NAME` until the settings screen (phase 7).
+     The importer does not carry the old token over; set it once by hand.
+   - Local files (`/media`, `/subs`, `/api/subs`) move to the agent in
+     phase 6: only the computer holding a file can serve it.
+   - The page's CSP needs `media-src blob:` for streaming; that comes with
+     the page itself in phase 5.
 5. **UI move.** Move the page out of `ui.py` into `web/`. Add login and
    logout, show the user's name, and mark which videos are on *this*
    computer vs. none.

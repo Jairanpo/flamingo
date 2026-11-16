@@ -13,6 +13,7 @@ import (
 
 	"github.com/Jairanpo/flamingo/internal/config"
 	"github.com/Jairanpo/flamingo/internal/db"
+	"github.com/Jairanpo/flamingo/internal/secret"
 	"github.com/Jairanpo/flamingo/internal/server"
 )
 
@@ -89,7 +90,14 @@ func serveCmd(load loader) *cobra.Command {
 					log.Info("migrated", "version", r.Source.Version, "file", r.Source.Path)
 				}
 			}
-			return server.New(cfg, pool, mig, log).Run(ctx)
+			box, err := secret.Load(cfg.Auth.SecretKeyFile)
+			if err != nil {
+				return err
+			}
+			if box == nil {
+				log.Warn("auth.secret_key_file is not set: the Toggl timer stays off")
+			}
+			return server.New(cfg, pool, mig, log).WithSecrets(box).Run(ctx)
 		},
 	}
 }

@@ -25,6 +25,17 @@ func (fakeYT) Browse(_ context.Context, ref string) (string, []ytdlp.BrowseItem,
 	}, nil
 }
 
+// Chapters: v1 has two, v2 has none, anything else is YouTube failing.
+func (fakeYT) Chapters(_ context.Context, vid string) ([]ytdlp.Chapter, error) {
+	switch vid {
+	case tV1:
+		return []ytdlp.Chapter{{Start: 0, End: 30, Title: "Intro"}, {Start: 30, End: 60, Title: "Rest"}}, nil
+	case tV2:
+		return nil, nil
+	}
+	return nil, ytdlp.ErrNothing
+}
+
 func TestSourcesAPI(t *testing.T) {
 	ts, pool, s := testServer(t)
 	ctx := context.Background()

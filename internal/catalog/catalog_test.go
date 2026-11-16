@@ -39,6 +39,10 @@ func (f fake) Browse(context.Context, string) (string, []ytdlp.BrowseItem, error
 	return "", nil, ytdlp.ErrNothing
 }
 
+func (f fake) Chapters(context.Context, string) ([]ytdlp.Chapter, error) {
+	return nil, ytdlp.ErrNothing
+}
+
 func vids(titles ...string) []ytdlp.Entry {
 	var out []ytdlp.Entry
 	for i, t := range titles {

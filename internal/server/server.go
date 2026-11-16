@@ -15,6 +15,8 @@ import (
 	"github.com/Jairanpo/flamingo/internal/catalog"
 	"github.com/Jairanpo/flamingo/internal/config"
 	"github.com/Jairanpo/flamingo/internal/db"
+	"github.com/Jairanpo/flamingo/internal/secret"
+	"github.com/Jairanpo/flamingo/internal/toggl"
 	"github.com/Jairanpo/flamingo/internal/ytdlp"
 )
 
@@ -27,17 +29,42 @@ type Server struct {
 	limiter *auth.Limiter
 	cat     *catalog.Catalog
 	jobs    *catalog.Queue
+	box     *secret.Box // seals Toggl tokens; nil: Toggl stays off
+	toggl   *toggl.Client
+	streams *streams
+	web     *http.Client // thumbnails
+	relay   *http.Client // stream bytes: no overall timeout, a film is long
+	// thumbURL is a fmt pattern taking the video id.
+	thumbURL string
 }
 
 func New(cfg *config.Server, pool *pgxpool.Pool, mig *db.Migrator, log *slog.Logger) *Server {
-	cat := &catalog.Catalog{Pool: pool, YT: ytdlp.Runner{Path: cfg.Ytdlp.Path, ExtraArgs: cfg.Ytdlp.ExtraArgs}}
+	yt := ytdlp.Runner{Path: cfg.Ytdlp.Path, ExtraArgs: cfg.Ytdlp.ExtraArgs}
+	cat := &catalog.Catalog{Pool: pool, YT: yt}
+	relay := &http.Transport{
+		Proxy:                 http.ProxyFromEnvironment,
+		ResponseHeaderTimeout: 30 * time.Second,
+		IdleConnTimeout:       90 * time.Second,
+		MaxIdleConnsPerHost:   8,
+	}
 	return &Server{
 		cfg: cfg, pool: pool, mig: mig, log: log,
-		auth:    &auth.Store{Pool: pool, SessionTTL: cfg.Auth.SessionTTL},
-		limiter: auth.NewLimiter(),
-		cat:     cat,
-		jobs:    &catalog.Queue{Cat: cat},
+		auth:     &auth.Store{Pool: pool, SessionTTL: cfg.Auth.SessionTTL},
+		limiter:  auth.NewLimiter(),
+		cat:      cat,
+		jobs:     &catalog.Queue{Cat: cat},
+		toggl:    &toggl.Client{},
+		streams:  newStreams(yt, cfg.Ytdlp.StreamMaxHeight),
+		web:      &http.Client{Timeout: 20 * time.Second},
+		relay:    &http.Client{Transport: relay},
+		thumbURL: "https://i.ytimg.com/vi/%s/mqdefault.jpg",
 	}
+}
+
+// WithSecrets gives the server the key that seals Toggl tokens.
+func (s *Server) WithSecrets(box *secret.Box) *Server {
+	s.box = box
+	return s
 }
 
 func (s *Server) Handler() http.Handler {
@@ -52,6 +79,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/me", s.requireUser(s.me))
 	s.routesAPI(mux)
 	s.routesSources(mux)
+	s.routesMedia(mux)
+	s.routesToggl(mux)
 	return securityHeaders(sameOrigin(mux))
 }
 

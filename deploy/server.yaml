@@ -14,9 +14,10 @@ storage:
 
 auth:
   session_ttl: 720h
-  secret_key_file: /run/secrets/flamingo_key   # used from phase 3 on
+  secret_key_file: /run/secrets/flamingo_key   # seals Toggl tokens
   signup: invite                         # invite | closed
 
 ytdlp:
   path: yt-dlp
   extra_args: []
+  stream_max_height: 1080   # the quality a stream starts at

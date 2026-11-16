@@ -37,7 +37,7 @@ the idea in its own words.
 | `sort_orders` | `sort_` | | `channel_topics` | `chto_` |
 | `tags` | `tag_` | | `toggl_channel_rules` | `tcru_` |
 | `devices` | `devi_` | | `toggl_channel_rule_tags` | `tcrt_` |
-| `device_videos` | `dvvi_` | | | |
+| `device_videos` | `dvvi_` | | `toggl_accounts` | `toac_` |
 
 A new table picks its prefix the same way and adds it here first.
 

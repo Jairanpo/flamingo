@@ -1,5 +1,6 @@
 # The central server and its database. Run from this directory:
 #   cp .env.example .env   # then set a real password
+#   openssl rand -base64 32 > flamingo_key   # seals Toggl tokens; keep it
 #   docker compose up -d --build
 #   curl localhost:8420/healthz
 
@@ -35,6 +36,8 @@ services:
     environment:
       FLAMINGO_DB_PASSWORD: ${FLAMINGO_DB_PASSWORD}
     command: ["serve", "--config", "/etc/flamingo/server.yaml"]
+    secrets:
+      - flamingo_key
     volumes:
       - ./server.yaml:/etc/flamingo/server.yaml:ro
       - thumbs:/data/thumbs
@@ -45,6 +48,10 @@ services:
       interval: 10s
       timeout: 3s
       retries: 3
+
+secrets:
+  flamingo_key:
+    file: ./flamingo_key
 
 volumes:
   pgdata:

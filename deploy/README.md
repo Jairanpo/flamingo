@@ -8,6 +8,8 @@ new server growing next to it. See `docs/go-backend-plan.md`.
 ```bash
 cd deploy
 cp .env.example .env          # set FLAMINGO_DB_PASSWORD
+openssl rand -base64 32 > flamingo_key   # seals Toggl tokens; back it up
+chmod 644 flamingo_key        # the container's user (uid 10001) must read it
 docker compose up -d --build
 curl localhost:8420/healthz   # {"db":"ok","schema_version":1,"status":"ok"}
 docker compose exec server flamingo migrate status -c /etc/flamingo/server.yaml
@@ -50,6 +52,17 @@ docker compose exec server flamingo sync -c /etc/flamingo/server.yaml --source U
 
 The image pins yt-dlp (`YTDLP_VERSION` in the Dockerfile). When YouTube
 changes and listings start failing, bump it and rebuild.
+
+## Toggl Track
+
+Each person connects their own account; the token is sealed with
+`flamingo_key` before it is stored. Lose the key and everyone sets their
+token again.
+
+```sh
+docker compose exec -it server flamingo user toggl jair -c /etc/flamingo/server.yaml
+# --workspace ID to file entries outside the default workspace, --clear to disconnect
+```
 
 ## Tests
 

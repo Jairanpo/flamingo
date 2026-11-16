@@ -7,3 +7,4 @@ __pycache__/
 
 # local secrets
 deploy/.env
+deploy/flamingo_key

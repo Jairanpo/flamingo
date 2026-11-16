@@ -45,6 +45,9 @@ type Auth struct {
 type Ytdlp struct {
 	Path      string   `mapstructure:"path"`
 	ExtraArgs []string `mapstructure:"extra_args"`
+	// StreamMaxHeight is the quality a stream starts at; the player can
+	// switch to any other on offer.
+	StreamMaxHeight int `mapstructure:"stream_max_height"`
 }
 
 // DefaultPath is where the server looks when no --config flag is given.
@@ -68,6 +71,7 @@ func defaults(v *viper.Viper) {
 	v.SetDefault("auth.signup", "invite")
 	v.SetDefault("ytdlp.path", "yt-dlp")
 	v.SetDefault("ytdlp.extra_args", []string{})
+	v.SetDefault("ytdlp.stream_max_height", 1080)
 }
 
 // LoadServer reads the server config. A missing file is only an error when
@@ -112,6 +116,9 @@ func (c *Server) validate() error {
 	case "invite", "closed":
 	default:
 		return fmt.Errorf("auth.signup must be invite or closed, not %q", c.Auth.Signup)
+	}
+	if c.Ytdlp.StreamMaxHeight < 0 {
+		return errors.New("ytdlp.stream_max_height must not be negative")
 	}
 	if c.Auth.SessionTTL <= 0 {
 		return errors.New("auth.session_ttl must be positive")
