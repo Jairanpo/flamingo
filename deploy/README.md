@@ -37,6 +37,20 @@ export YT_DATABASE_URL="postgres://yt:$(grep YT_DB_PASSWORD deploy/.env | cut -d
 It prints row counts per table plus notes on anything it couldn't carry
 over. Running it again replaces that user's library rather than doubling it.
 
+## Syncing the catalog
+
+`yt sync` lists every tracked channel and playlist again and stores what
+changed (new uploads, removals, videos gone private):
+
+```sh
+docker compose exec server yt sync -c /etc/yt/server.yaml            # everything not shelved
+docker compose exec server yt sync -c /etc/yt/server.yaml --limit 30 # quick: newest 30 each
+docker compose exec server yt sync -c /etc/yt/server.yaml --source UC…
+```
+
+The image pins yt-dlp (`YTDLP_VERSION` in the Dockerfile). When YouTube
+changes and listings start failing, bump it and rebuild.
+
 ## Tests
 
 `go test -p 1 ./...` runs everything. The database tests run only when

@@ -239,6 +239,15 @@ until the switch-over in phase 7.
    - "On this computer" comes from an `X-Yt-Device` header, which the
      agent will set (phase 6).
    - Downloads imported from the old app count as part of your library.
+   *Step 4b done 2026-11-15:* adding sources (Add box, Browse, job cards)
+   and `yt sync`.
+   - The catalog is shared: a channel two people track is listed once.
+     Adding it puts it in your library only.
+   - A source is skipped by `yt sync` only when everyone tracking it has
+     shelved it.
+   - Job cards are per person and live in memory, as before.
+   - The server image carries a pinned, checksum-checked yt-dlp.
+   - Still manual: nothing runs `yt sync` on a schedule yet.
 5. **UI move.** Move the page out of `ui.py` into `web/`. Add login and
    logout, show the user's name, and mark which videos are on *this*
    computer vs. none.

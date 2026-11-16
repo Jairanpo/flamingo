@@ -1,5 +1,5 @@
-// Package ytdlp runs the yt-dlp program. Only channel lookups exist so far;
-// the rest of the Python ytdlp.py arrives with phase 4.
+// Package ytdlp runs the yt-dlp program: listings for the catalog, and
+// owner lookups for the importer.
 package ytdlp
 
 import (
@@ -37,8 +37,8 @@ func (r Runner) owner(ctx context.Context, url string) (Owner, error) {
 	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
 	// -I 0 lists no entries: only the list's own metadata comes back.
-	args := append([]string{"--flat-playlist", "-I", "0", "-J", "--no-warnings"}, r.ExtraArgs...)
-	out, err := exec.CommandContext(ctx, r.Path, append(args, url)...).Output()
+	args := append(r.base(), "--flat-playlist", "-I", "0", "-J")
+	out, err := exec.CommandContext(ctx, r.path(), append(args, url)...).Output()
 	if err != nil {
 		if ee, ok := err.(*exec.ExitError); ok {
 			return Owner{}, fmt.Errorf("yt-dlp %s: %s", url, strings.TrimSpace(string(ee.Stderr)))

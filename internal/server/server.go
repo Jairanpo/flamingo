@@ -12,8 +12,10 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/Jairanpo/yt/internal/auth"
+	"github.com/Jairanpo/yt/internal/catalog"
 	"github.com/Jairanpo/yt/internal/config"
 	"github.com/Jairanpo/yt/internal/db"
+	"github.com/Jairanpo/yt/internal/ytdlp"
 )
 
 type Server struct {
@@ -23,13 +25,18 @@ type Server struct {
 	log     *slog.Logger
 	auth    *auth.Store
 	limiter *auth.Limiter
+	cat     *catalog.Catalog
+	jobs    *catalog.Queue
 }
 
 func New(cfg *config.Server, pool *pgxpool.Pool, mig *db.Migrator, log *slog.Logger) *Server {
+	cat := &catalog.Catalog{Pool: pool, YT: ytdlp.Runner{Path: cfg.Ytdlp.Path, ExtraArgs: cfg.Ytdlp.ExtraArgs}}
 	return &Server{
 		cfg: cfg, pool: pool, mig: mig, log: log,
 		auth:    &auth.Store{Pool: pool, SessionTTL: cfg.Auth.SessionTTL},
 		limiter: auth.NewLimiter(),
+		cat:     cat,
+		jobs:    &catalog.Queue{Cat: cat},
 	}
 }
 
@@ -44,6 +51,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /", s.requireUser(s.home))
 	mux.HandleFunc("GET /api/me", s.requireUser(s.me))
 	s.routesAPI(mux)
+	s.routesSources(mux)
 	return securityHeaders(sameOrigin(mux))
 }
 
