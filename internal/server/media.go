@@ -26,7 +26,7 @@ const browserUA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, li
 
 // placeholder stands in for a thumbnail YouTube would not give.
 const placeholder = `<svg xmlns="http://www.w3.org/2000/svg" width="320" height="180">` +
-	`<rect width="320" height="180" fill="#0a2241"/>` +
+	`<rect width="320" height="180" fill="#06182f"/>` +
 	`<text x="160" y="96" fill="#545677" font-family="sans-serif" font-size="14"` +
 	` text-anchor="middle">no thumbnail</text></svg>`
 

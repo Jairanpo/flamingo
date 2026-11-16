@@ -15,6 +15,13 @@ curl localhost:8420/healthz   # {"db":"ok","schema_version":1,"status":"ok"}
 docker compose exec server flamingo migrate status -c /etc/flamingo/server.yaml
 ```
 
+After changing the code, rebuild and restart the server in one step (it
+waits for `/healthz`, and prints the logs if the server does not come up):
+
+```bash
+sudo scripts/redeploy.sh
+```
+
 ## Without Docker
 
 ```bash

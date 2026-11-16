@@ -1,7 +1,7 @@
 :root {
-  /* Flamingo palette: navy base #01162F, flamingo pink #EB9FEF, blush #FECEE9, slate #545677 */
-  --bg:#01162F; --panel:#0a2241; --edge:#545677; --ink:#FECEE9; --dim:#a3a5c4;
-  --accent:#EB9FEF; --on-accent:#01162F; --bad:#ff8a9a; --shadow:0 1px 3px rgba(0,0,0,.45);
+  /* Flamingo palette (see app.css): deep navy, warm white text, pink accents. */
+  --bg:#000d1f; --panel:#06182f; --edge:#545677; --ink:#f5efe6; --dim:#aba79f;
+  --accent:#EB9FEF; --on-accent:#000d1f; --bad:#ff8a9a; --shadow:0 1px 3px rgba(0,0,0,.5);
   color-scheme: dark;
 }
 * { box-sizing:border-box; }
@@ -10,7 +10,7 @@ body { margin:0; min-height:100vh; display:flex; align-items:center; justify-con
        font:15px/1.5 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; }
 .card { width:100%; max-width:340px; background:var(--panel); border:1px solid var(--edge);
         border-radius:12px; padding:28px 24px; box-shadow:var(--shadow); }
-.brand { font-weight:650; letter-spacing:-.01em; font-size:20px; margin:0 0 4px; }
+.brand { font-weight:650; letter-spacing:-.01em; font-size:20px; margin:0 0 4px; color:var(--accent); }
 .brand span { color:var(--accent); }
 .sub { color:var(--dim); margin:0 0 20px; font-size:14px; }
 label { display:block; font-size:13px; color:var(--dim); margin:14px 0 4px; }

@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Flamingo</title>
+<link rel="stylesheet" href="/assets/app.css">
+</head>
+<body data-device="{{.Device}}">
+<header>
+  <div class="brand">Flamingo<span>·</span></div>
+  <input type="search" id="q" placeholder="Search titles and descriptions…" autocomplete="off">
+  <button class="chip" id="sidebtn" title="Channels and playlists">☰</button>
+  <button class="who-src" id="whosrc" hidden></button>
+  <button class="chip" id="pin" hidden></button>
+  <button class="chip" id="shelve" hidden></button>
+  <button class="chip" id="forget" hidden>Forget</button>
+  <select id="sort" title="Sort order (remembered per view)"></select>
+  <div class="chips">
+    <button class="chip" id="f-have"      aria-pressed="false">Downloaded</button>
+    <button class="chip" id="f-starred"   aria-pressed="false">Starred</button>
+    <button class="chip" id="f-unwatched" aria-pressed="false">Unwatched</button>
+    <button class="chip" id="f-hidden" aria-pressed="false"
+            title="Show what is hidden — private or deleted entries, and anything you hid">Hidden</button>
+  </div>
+  <button class="chip" id="newsrc"
+          title="Track a channel or playlist">＋ source</button>
+  <button class="chip" id="newcoll" title="New collection">＋ collection</button>
+  <button class="chip" id="togglcfg"
+          title="How the open channel or playlist shows up in Toggl Track (or every channel, with none open)">⏱ toggl</button>
+  <div id="viewprog" hidden><span class="track"><i></i></span><span></span></div>
+  <div class="stats" id="stats"></div>
+  <div class="me" title="{{.User.Name}}{{if .User.IsAdmin}} (admin){{end}}">
+    <strong>{{.User.DisplayName}}</strong>
+    <form method="post" action="/logout"><button class="chip" type="submit">Sign out</button></form>
+  </div>
+</header>
+<div class="layout">
+<aside id="side">
+  <input type="search" id="sidefilter" placeholder="Find a channel or playlist…"
+         autocomplete="off">
+  <datalist id="topiclist"></datalist>
+  <nav id="sidetree"></nav>
+</aside>
+<main>
+  <div id="dash" hidden></div>
+  <div class="grid" id="grid"></div>
+  <div class="empty" id="empty" hidden></div>
+</main>
+</div>
+
+<div class="fold" id="fold" hidden>
+  <div class="seenlist" id="seenlist" hidden></div>
+  <button class="foldbar" id="foldbar" aria-expanded="false"
+          aria-controls="seenlist">
+    <span class="tw">&#9654;</span>
+    <span class="grow" id="foldn"></span>
+    <span id="foldhint">show</span>
+  </button>
+</div>
+
+<div id="jobs"></div>
+
+<div id="modal" class="sheet"><div class="box">
+  <h3>Add to collection</h3>
+  <div class="who" id="mwho"></div>
+  <div id="mlist"></div>
+  <div class="mk"><input id="mnew" placeholder="New collection…" autocomplete="off">
+    <button class="act" id="madd">Create</button></div>
+</div></div>
+
+<div id="tgmodal" class="sheet"><div class="box wide">
+  <h3>Toggl Track <span class="count" id="tgscope"></span></h3>
+  <div class="who hint">One row per channel: what to call it in Toggl, the
+    project it counts towards, and any tags. A name you set is always used.
+    Left blank, the name is automatic: the playlist's title when you watch
+    from one, else the channel's — <em>Reset name</em> goes back to that.
+    Every entry is tagged <code>Youtube</code> and
+    <code>Youtube:&lt;channel&gt;</code> on its own. A project has to exist in
+    Toggl already — it will not be created for you. Needs your Toggl
+    account connected on the server; without it the timer button stays
+    away.</div>
+  <div class="bar2">
+    <input id="tgfilter" class="grow" placeholder="Filter channels…"
+           autocomplete="off" spellcheck="false">
+    <button class="link" id="tgswitch"></button>
+  </div>
+  <div class="who hint bad" id="tgoff" hidden>
+    Your Toggl account is not connected yet, so nothing here can start a
+    timer. Copy your API token (Toggl → Profile settings) and ask an admin
+    to run <code>flamingo user toggl &lt;you&gt;</code>.</div>
+  <div class="tgrows" id="tgrows"></div>
+  <div class="bar2">
+    <span class="count grow" id="tgnote"></span>
+    <button class="act" id="tgdone">Done</button>
+  </div>
+</div></div>
+
+<div id="srcmodal" class="sheet"><div class="box">
+  <h3 id="stitle">Track a channel or playlist</h3>
+  <div class="who hint" id="shint">An @handle, a channel URL, a playlist URL
+    or <code>PL…</code> id, or one video's link — unlisted ones too.</div>
+  <div id="sask">
+    <div class="mk" style="margin-top:0">
+      <input id="snew" placeholder="@3blue1brown" autocomplete="off"
+             spellcheck="false">
+      <button class="act primary" id="sadd">Add</button></div>
+    <div class="bar2">
+      <span class="count grow">…or see a creator's courses, live and playlists:</span>
+      <button class="link" id="sbrowse">Browse →</button></div>
+  </div>
+  <div id="spick" hidden>
+    <div class="bar2" style="margin-top:0">
+      <span class="count grow" id="spickwho"></span>
+      <button class="link" id="sall">all</button>
+      <button class="link" id="snone">none</button></div>
+    <div class="picks" id="spicks"></div>
+    <div class="bar2">
+      <button class="link grow" style="text-align:left" id="sback">← back</button>
+      <button class="act primary" id="spickadd">Track selected</button></div>
+  </div>
+  <div class="err" id="serr" hidden></div>
+  <div class="who hint" style="margin:12px 0 0">Cataloguing reads titles only —
+    nothing downloads until you ask for it.</div>
+</div></div>
+
+<div id="player">
+  <button id="pclose" title="Close (Esc)">&times;</button>
+  <video id="pvideo" controls playsinline></video>
+  <div id="pchap" hidden></div>
+  <div id="pmstrip"></div>
+  <div id="pmeta"><h2 id="ptitle"></h2><div class="sub" id="psub"></div>
+    <div class="sub" id="pstatus" hidden></div>
+    <div id="pspeed" title="Speed (Shift+&lt; / Shift+&gt;)"></div>
+    <div id="pquality" title="Streaming quality" hidden></div>
+    <ol id="pchlist" hidden></ol>
+    <div id="pmarkrow"><button id="pmarkadd" title="Mark where you are (M)">🔖 Mark this spot</button>
+      <span class="hint">M · click a mark to jump back</span></div>
+    <ol id="pmarks"></ol>
+    <div id="pdesc"></div></div>
+</div>
+
+<script src="/assets/app.js"></script>
+</body>
+</html>

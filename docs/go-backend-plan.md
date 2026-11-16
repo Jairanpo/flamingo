@@ -264,6 +264,17 @@ until the switch-over in phase 7.
 5. **UI move.** Move the page out of `ui.py` into `web/`. Add login and
    logout, show the user's name, and mark which videos are on *this*
    computer vs. none.
+   *Done 2026-11-16:*
+   - The page is `internal/server/templates/library.html` plus
+     `assets/app.js` and `assets/app.css`, embedded in the binary. `ui.py`
+     stays as it is until the switch-over (phase 7).
+   - Flamingo palette, dark only. The header shows who is signed in, with
+     Sign out. A 401 from the API sends the page back to the login.
+   - Download controls (Download, quality menu, Downloaded filter) show only
+     when the page comes through an agent (`X-Flamingo-Device`); otherwise
+     every Watch streams. "On disk" already means this computer.
+   - The CSP allows scripts from this server only; inline styles stay (the
+     page sizes bars with style attributes), and streams play from `blob:`.
 6. **Agent.** Proxy, download queue (port of `jobs.py`), local media with
    byte ranges, buffering, inventory reports, pairing, systemd unit.
 7. **Toggl layers + switch-over.** Per-user keys and settings screen,

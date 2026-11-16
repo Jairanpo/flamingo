@@ -110,7 +110,12 @@ func sameOrigin(next http.Handler) http.Handler {
 func securityHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h := w.Header()
-		h.Set("Content-Security-Policy", "default-src 'self'; frame-ancestors 'none'; form-action 'self'; base-uri 'none'")
+		// Scripts only from this server. Inline styles are allowed: the page
+		// sizes progress bars with style attributes. Streams play from
+		// MediaSource blob: URLs.
+		h.Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; "+
+			"style-src 'self' 'unsafe-inline'; img-src 'self' data:; media-src 'self' blob:; "+
+			"frame-ancestors 'none'; form-action 'self'; base-uri 'none'; object-src 'none'")
 		h.Set("X-Content-Type-Options", "nosniff")
 		h.Set("Referrer-Policy", "same-origin")
 		next.ServeHTTP(w, r)
@@ -212,7 +217,10 @@ func (s *Server) home(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	s.render(w, http.StatusOK, "home.html", CurrentUser(r))
+	s.render(w, http.StatusOK, "library.html", struct {
+		User   *auth.User
+		Device string
+	}{CurrentUser(r), strings.TrimSpace(r.Header.Get(deviceHeader))})
 }
 
 func (s *Server) me(w http.ResponseWriter, r *http.Request) {
