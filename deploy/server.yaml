@@ -1,0 +1,22 @@
+# Central server config, as mounted by docker-compose.yml.
+# Any key can be overridden by YT_<SECTION>_<KEY>, e.g. YT_DATABASE_URL.
+# ${VAR} references are expanded from the environment, so secrets stay in .env.
+
+listen: ":8420"
+public_url: "http://localhost:8420"
+
+database:
+  url: "postgres://yt:${YT_DB_PASSWORD}@db:5432/yt?sslmode=disable"
+  migrate_on_start: true
+
+storage:
+  thumbs_dir: /data/thumbs
+
+auth:
+  session_ttl: 720h
+  secret_key_file: /run/secrets/yt_key   # used from phase 3 on
+  signup: invite                         # invite | closed
+
+ytdlp:
+  path: yt-dlp
+  extra_args: []

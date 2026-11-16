@@ -1,0 +1,48 @@
+# The central server and its database. Run from this directory:
+#   cp .env.example .env   # then set a real password
+#   docker compose up -d --build
+#   curl localhost:8420/healthz
+
+name: yt
+
+services:
+  db:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: yt
+      POSTGRES_DB: yt
+      POSTGRES_PASSWORD: ${YT_DB_PASSWORD:?set YT_DB_PASSWORD in deploy/.env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U yt -d yt"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  server:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      YT_DB_PASSWORD: ${YT_DB_PASSWORD}
+    command: ["serve", "--config", "/etc/yt/server.yaml"]
+    volumes:
+      - ./server.yaml:/etc/yt/server.yaml:ro
+      - thumbs:/data/thumbs
+    ports:
+      - "${YT_PORT:-8420}:8420"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8420/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+volumes:
+  pgdata:
+  thumbs:
