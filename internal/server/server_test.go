@@ -61,12 +61,16 @@ func TestHealthzAgainstPostgres(t *testing.T) {
 	defer resp.Body.Close()
 	var body map[string]any
 	_ = json.NewDecoder(resp.Body).Decode(&body)
-	if resp.StatusCode != 200 || body["db"] != "ok" || body["schema_version"] != float64(1) {
-		t.Fatalf("healthz = %d %v", resp.StatusCode, body)
+	latest, err := mig.Version(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.StatusCode != 200 || body["db"] != "ok" || body["schema_version"] != float64(latest) {
+		t.Fatalf("healthz = %d %v (latest %d)", resp.StatusCode, body, latest)
 	}
 
 	var n int
-	if err := pool.QueryRow(ctx, "SELECT count(*) FROM instance").Scan(&n); err != nil || n != 1 {
-		t.Fatalf("instance rows = %d, %v", n, err)
+	if err := pool.QueryRow(ctx, "SELECT count(*) FROM sort_orders").Scan(&n); err != nil || n != 7 {
+		t.Fatalf("seeded sort orders = %d, %v", n, err)
 	}
 }

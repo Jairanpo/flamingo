@@ -207,6 +207,16 @@ until the switch-over in phase 7.
    `docker compose up` gives a healthy server.
 2. **Schema + import.** All migrations, sqlc queries, `yt import sqlite`.
    *Done when:* your real data imports and its counts match SQLite.
+   *Done 2026-11-15*, with these changes:
+   - "Picks" are not playlists: they are a per-user list per channel
+     (`user_picks`).
+   - The Toggl playlist layer waits for phase 7; channel rules are imported.
+   - sqlc moves to phase 4, where the app's queries are written. The
+     import uses plain pgx.
+   - A video's uploader is known for 5,800 of 6,450 videos; the rest were
+     only seen in other people's playlists, and a later sync fills them in.
+   - Not carried over: `left_source` (empty in the real data) and Toggl
+     settings for names no channel matches (one: "Mikel Hyperpolyglot").
 3. **Accounts.** Users, login page, sessions, the `yt user` commands.
 4. **API parity.** Port every `/api/*` route from `server.py` with the same
    JSON shapes, per user: state, sources, browse, sync jobs, pins, shelve,
