@@ -8,9 +8,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/Jairanpo/yt/internal/db"
-	"github.com/Jairanpo/yt/internal/importer"
-	"github.com/Jairanpo/yt/internal/ytdlp"
+	"github.com/Jairanpo/flamingo/internal/db"
+	"github.com/Jairanpo/flamingo/internal/importer"
+	"github.com/Jairanpo/flamingo/internal/ytdlp"
 )
 
 func importCmd(load loader) *cobra.Command {

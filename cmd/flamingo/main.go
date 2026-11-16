@@ -4,12 +4,12 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/Jairanpo/yt/internal/cli"
+	"github.com/Jairanpo/flamingo/internal/cli"
 )
 
 func main() {
 	if err := cli.Execute(); err != nil {
-		fmt.Fprintln(os.Stderr, "yt:", err)
+		fmt.Fprintln(os.Stderr, "flamingo:", err)
 		os.Exit(1)
 	}
 }

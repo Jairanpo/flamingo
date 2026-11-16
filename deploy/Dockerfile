@@ -7,8 +7,8 @@ COPY cmd ./cmd
 COPY internal ./internal
 ARG VERSION=dev
 RUN CGO_ENABLED=0 go build -trimpath \
-      -ldflags "-s -w -X github.com/Jairanpo/yt/internal/cli.version=${VERSION}" \
-      -o /out/yt ./cmd/yt
+      -ldflags "-s -w -X github.com/Jairanpo/flamingo/internal/cli.version=${VERSION}" \
+      -o /out/flamingo ./cmd/flamingo
 
 # Runtime stage. Debian rather than distroless because the server shells
 # out to yt-dlp for catalog syncs; curl is for the healthcheck.
@@ -25,10 +25,10 @@ RUN apt-get update \
  && grep ' yt-dlp_linux$' SHA2-256SUMS | sha256sum -c - \
  && install -m 755 yt-dlp_linux /usr/local/bin/yt-dlp \
  && rm yt-dlp_linux SHA2-256SUMS \
- && useradd --system --uid 10001 --home /data yt \
- && mkdir -p /data/thumbs && chown -R yt /data
-COPY --from=build /out/yt /usr/local/bin/yt
-USER yt
+ && useradd --system --uid 10001 --home /data flamingo \
+ && mkdir -p /data/thumbs && chown -R flamingo /data
+COPY --from=build /out/flamingo /usr/local/bin/flamingo
+USER flamingo
 EXPOSE 8420
-ENTRYPOINT ["yt"]
+ENTRYPOINT ["flamingo"]
 CMD ["serve"]

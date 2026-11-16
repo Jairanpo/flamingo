@@ -17,11 +17,11 @@ func write(t *testing.T, body string) string {
 }
 
 func TestYAMLAndExpansion(t *testing.T) {
-	t.Setenv("YT_DB_PASSWORD", "s3cret")
+	t.Setenv("FLAMINGO_DB_PASSWORD", "s3cret")
 	p := write(t, `
 listen: ":9000"
 database:
-  url: "postgres://yt:${YT_DB_PASSWORD}@db/yt"
+  url: "postgres://flamingo:${FLAMINGO_DB_PASSWORD}@db/flamingo"
 auth:
   session_ttl: 2h
 `)
@@ -32,7 +32,7 @@ auth:
 	if c.Listen != ":9000" {
 		t.Errorf("listen = %q", c.Listen)
 	}
-	if c.Database.URL != "postgres://yt:s3cret@db/yt" {
+	if c.Database.URL != "postgres://flamingo:s3cret@db/flamingo" {
 		t.Errorf("url = %q", c.Database.URL)
 	}
 	if c.Auth.SessionTTL != 2*time.Hour {
@@ -44,14 +44,14 @@ auth:
 }
 
 func TestEnvOverridesFile(t *testing.T) {
-	t.Setenv("YT_DATABASE_URL", "postgres://env/yt")
-	t.Setenv("YT_LISTEN", ":7000")
-	p := write(t, "database:\n  url: postgres://file/yt\n")
+	t.Setenv("FLAMINGO_DATABASE_URL", "postgres://env/flamingo")
+	t.Setenv("FLAMINGO_LISTEN", ":7000")
+	p := write(t, "database:\n  url: postgres://file/flamingo\n")
 	c, err := LoadServer(p, true)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if c.Database.URL != "postgres://env/yt" || c.Listen != ":7000" {
+	if c.Database.URL != "postgres://env/flamingo" || c.Listen != ":7000" {
 		t.Errorf("env did not win: %q %q", c.Database.URL, c.Listen)
 	}
 }
@@ -61,7 +61,7 @@ func TestMissingFile(t *testing.T) {
 	if _, err := LoadServer(missing, true); err == nil {
 		t.Error("an explicit missing file should be an error")
 	}
-	t.Setenv("YT_DATABASE_URL", "postgres://env/yt")
+	t.Setenv("FLAMINGO_DATABASE_URL", "postgres://env/flamingo")
 	if _, err := LoadServer(missing, false); err != nil {
 		t.Errorf("the default path may be absent: %v", err)
 	}

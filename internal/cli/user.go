@@ -13,8 +13,8 @@ import (
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 
-	"github.com/Jairanpo/yt/internal/auth"
-	"github.com/Jairanpo/yt/internal/db"
+	"github.com/Jairanpo/flamingo/internal/auth"
+	"github.com/Jairanpo/flamingo/internal/db"
 )
 
 func userCmd(load loader) *cobra.Command {

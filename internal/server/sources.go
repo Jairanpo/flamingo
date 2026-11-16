@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Jairanpo/yt/internal/catalog"
-	"github.com/Jairanpo/yt/internal/ytdlp"
+	"github.com/Jairanpo/flamingo/internal/catalog"
+	"github.com/Jairanpo/flamingo/internal/ytdlp"
 )
 
 // Adding sources and browsing a creator, as the Python server did: Add goes

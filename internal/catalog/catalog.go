@@ -15,7 +15,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/Jairanpo/yt/internal/ytdlp"
+	"github.com/Jairanpo/flamingo/internal/ytdlp"
 )
 
 // Lister is the part of ytdlp.Runner the catalog needs; tests swap it.

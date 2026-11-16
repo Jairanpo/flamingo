@@ -11,8 +11,8 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/Jairanpo/yt/internal/db"
-	"github.com/Jairanpo/yt/internal/ytdlp"
+	"github.com/Jairanpo/flamingo/internal/db"
+	"github.com/Jairanpo/flamingo/internal/ytdlp"
 )
 
 // The Python app's schema, trimmed to the columns the importer reads.
@@ -125,9 +125,9 @@ func TestPlanOffline(t *testing.T) {
 }
 
 func TestImportAgainstPostgres(t *testing.T) {
-	url := os.Getenv("YT_TEST_DATABASE_URL")
+	url := os.Getenv("FLAMINGO_TEST_DATABASE_URL")
 	if url == "" {
-		t.Skip("YT_TEST_DATABASE_URL not set")
+		t.Skip("FLAMINGO_TEST_DATABASE_URL not set")
 	}
 	ctx := context.Background()
 	pool := migrated(t, ctx, url)

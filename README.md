@@ -1,8 +1,11 @@
-# yt · local
+# Flamingo
 
 A catalog-first local library for the YouTube channels, playlists and courses
 you actually learn from, so you can block youtube.com outright and still reach
 the videos you want.
+
+> Flamingo is moving to a Go server (`flamingo`, see `deploy/README.md`).
+> Until that switch-over, the Python app below keeps its old `yt` command.
 
 Three ideas do the work:
 

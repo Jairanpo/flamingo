@@ -12,7 +12,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"github.com/Jairanpo/yt/internal/library"
+	"github.com/Jairanpo/flamingo/internal/library"
 )
 
 // The /api routes the page uses, in the JSON shapes the Python server gave
@@ -22,7 +22,7 @@ var vidRE = regexp.MustCompile(`^[A-Za-z0-9_-]{11}$`)
 
 // deviceHeader names the computer a request comes through. The agent sets
 // it (phase 6); without it nothing counts as downloaded.
-const deviceHeader = "X-Yt-Device"
+const deviceHeader = "X-Flamingo-Device"
 
 func (s *Server) lib(r *http.Request) (*library.Lib, error) {
 	l := &library.Lib{Pool: s.pool, User: CurrentUser(r).ID}

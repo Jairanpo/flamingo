@@ -5,9 +5,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/Jairanpo/yt/internal/catalog"
-	"github.com/Jairanpo/yt/internal/db"
-	"github.com/Jairanpo/yt/internal/ytdlp"
+	"github.com/Jairanpo/flamingo/internal/catalog"
+	"github.com/Jairanpo/flamingo/internal/db"
+	"github.com/Jairanpo/flamingo/internal/ytdlp"
 )
 
 func syncCmd(load loader) *cobra.Command {
@@ -62,7 +62,7 @@ cannot notice removals.`,
 			}
 			fmt.Fprintf(out, "\n%d new video(s) across %d source(s).\n", newTotal, len(targets))
 			if skipped > 0 {
-				fmt.Fprintf(out, "%d shelved source(s) skipped — yt sync --shelved to include them\n", skipped)
+				fmt.Fprintf(out, "%d shelved source(s) skipped — flamingo sync --shelved to include them\n", skipped)
 			}
 			if failed > 0 {
 				return fmt.Errorf("%d source(s) failed", failed)

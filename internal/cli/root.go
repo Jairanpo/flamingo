@@ -1,4 +1,4 @@
-// Package cli wires the cobra commands for the yt binary.
+// Package cli wires the cobra commands for the flamingo binary.
 package cli
 
 import (
@@ -11,12 +11,12 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/Jairanpo/yt/internal/config"
-	"github.com/Jairanpo/yt/internal/db"
-	"github.com/Jairanpo/yt/internal/server"
+	"github.com/Jairanpo/flamingo/internal/config"
+	"github.com/Jairanpo/flamingo/internal/db"
+	"github.com/Jairanpo/flamingo/internal/server"
 )
 
-var version = "dev" // set with -ldflags "-X github.com/Jairanpo/yt/internal/cli.version=..."
+var version = "dev" // set with -ldflags "-X github.com/Jairanpo/flamingo/internal/cli.version=..."
 
 func Execute() error {
 	return newRoot().Execute()
@@ -25,7 +25,7 @@ func Execute() error {
 func newRoot() *cobra.Command {
 	var cfgPath string
 	root := &cobra.Command{
-		Use:           "yt",
+		Use:           "flamingo",
 		Short:         "A shared, catalog-first library for the YouTube you learn from",
 		SilenceUsage:  true,
 		SilenceErrors: true,

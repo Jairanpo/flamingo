@@ -1,8 +1,8 @@
 // Package config loads the server's YAML configuration through viper.
 //
 // Order of precedence, lowest first: built-in defaults, the YAML file, then
-// environment variables named YT_<SECTION>_<KEY> (for example
-// YT_DATABASE_URL). String values may also contain ${VAR} references, which
+// environment variables named FLAMINGO_<SECTION>_<KEY> (for example
+// FLAMINGO_DATABASE_URL). String values may also contain ${VAR} references, which
 // are expanded from the environment, so secrets never need to be written
 // into the file itself.
 package config
@@ -54,7 +54,7 @@ func DefaultPath() string {
 		home, _ := os.UserHomeDir()
 		base = filepath.Join(home, ".config")
 	}
-	return filepath.Join(base, "yt", "server.yaml")
+	return filepath.Join(base, "flamingo", "server.yaml")
 }
 
 func defaults(v *viper.Viper) {
@@ -78,7 +78,7 @@ func LoadServer(path string, explicit bool) (*Server, error) {
 	defaults(v)
 	v.SetConfigFile(path)
 	v.SetConfigType("yaml")
-	v.SetEnvPrefix("YT")
+	v.SetEnvPrefix("FLAMINGO")
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	v.AutomaticEnv()
 
@@ -106,7 +106,7 @@ func (c *Server) expandEnv() {
 
 func (c *Server) validate() error {
 	if c.Database.URL == "" {
-		return errors.New("database.url is not set (in the YAML file or YT_DATABASE_URL)")
+		return errors.New("database.url is not set (in the YAML file or FLAMINGO_DATABASE_URL)")
 	}
 	switch c.Auth.Signup {
 	case "invite", "closed":

@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Jairanpo/yt/internal/ytdlp"
+	"github.com/Jairanpo/flamingo/internal/ytdlp"
 )
 
 // Resolver looks up channels the SQLite file doesn't fully know. A nil

@@ -1,4 +1,4 @@
-module github.com/Jairanpo/yt
+module github.com/Jairanpo/flamingo
 
 go 1.26.0
 

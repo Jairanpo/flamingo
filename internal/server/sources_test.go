@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Jairanpo/yt/internal/ytdlp"
+	"github.com/Jairanpo/flamingo/internal/ytdlp"
 )
 
 type fakeYT struct{}

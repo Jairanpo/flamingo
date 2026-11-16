@@ -11,10 +11,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Jairanpo/yt/internal/auth"
+	"github.com/Jairanpo/flamingo/internal/auth"
 )
 
-const sessionCookie = "yt_session"
+const sessionCookie = "flamingo_session"
 
 //go:embed templates/*.html assets/*
 var webFS embed.FS

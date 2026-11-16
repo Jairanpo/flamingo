@@ -11,20 +11,20 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Jairanpo/yt/internal/config"
-	"github.com/Jairanpo/yt/internal/db"
+	"github.com/Jairanpo/flamingo/internal/config"
+	"github.com/Jairanpo/flamingo/internal/db"
 )
 
 // Needs a disposable Postgres, e.g.
 //
-//	YT_TEST_DATABASE_URL=postgres://yt:pw@localhost:5432/yt_test go test ./...
+//	FLAMINGO_TEST_DATABASE_URL=postgres://flamingo:pw@localhost:5432/flamingo_test go test ./...
 //
 // Without one the test is skipped. It migrates up, checks /healthz, then
 // migrates back down so the database is left empty.
 func TestHealthzAgainstPostgres(t *testing.T) {
-	url := os.Getenv("YT_TEST_DATABASE_URL")
+	url := os.Getenv("FLAMINGO_TEST_DATABASE_URL")
 	if url == "" {
-		t.Skip("YT_TEST_DATABASE_URL not set")
+		t.Skip("FLAMINGO_TEST_DATABASE_URL not set")
 	}
 	ctx := context.Background()
 	pool, err := db.Open(ctx, url)

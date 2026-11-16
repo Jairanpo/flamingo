@@ -11,11 +11,11 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/Jairanpo/yt/internal/auth"
-	"github.com/Jairanpo/yt/internal/catalog"
-	"github.com/Jairanpo/yt/internal/config"
-	"github.com/Jairanpo/yt/internal/db"
-	"github.com/Jairanpo/yt/internal/ytdlp"
+	"github.com/Jairanpo/flamingo/internal/auth"
+	"github.com/Jairanpo/flamingo/internal/catalog"
+	"github.com/Jairanpo/flamingo/internal/config"
+	"github.com/Jairanpo/flamingo/internal/db"
+	"github.com/Jairanpo/flamingo/internal/ytdlp"
 )
 
 type Server struct {

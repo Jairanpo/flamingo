@@ -3,23 +3,23 @@
 #   docker compose up -d --build
 #   curl localhost:8420/healthz
 
-name: yt
+name: flamingo
 
 services:
   db:
     image: postgres:17
     restart: unless-stopped
     environment:
-      POSTGRES_USER: yt
-      POSTGRES_DB: yt
-      POSTGRES_PASSWORD: ${YT_DB_PASSWORD:?set YT_DB_PASSWORD in deploy/.env}
+      POSTGRES_USER: flamingo
+      POSTGRES_DB: flamingo
+      POSTGRES_PASSWORD: ${FLAMINGO_DB_PASSWORD:?set FLAMINGO_DB_PASSWORD in deploy/.env}
     volumes:
       - pgdata:/var/lib/postgresql/data
-    # Reachable from this machine only, for `yt import` and the tests.
+    # Reachable from this machine only, for `flamingo import` and the tests.
     ports:
-      - "127.0.0.1:${YT_DB_PORT:-5433}:5432"
+      - "127.0.0.1:${FLAMINGO_DB_PORT:-5433}:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U yt -d yt"]
+      test: ["CMD-SHELL", "pg_isready -U flamingo -d flamingo"]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -33,13 +33,13 @@ services:
       db:
         condition: service_healthy
     environment:
-      YT_DB_PASSWORD: ${YT_DB_PASSWORD}
-    command: ["serve", "--config", "/etc/yt/server.yaml"]
+      FLAMINGO_DB_PASSWORD: ${FLAMINGO_DB_PASSWORD}
+    command: ["serve", "--config", "/etc/flamingo/server.yaml"]
     volumes:
-      - ./server.yaml:/etc/yt/server.yaml:ro
+      - ./server.yaml:/etc/flamingo/server.yaml:ro
       - thumbs:/data/thumbs
     ports:
-      - "${YT_PORT:-8420}:8420"
+      - "${FLAMINGO_PORT:-8420}:8420"
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:8420/healthz"]
       interval: 10s

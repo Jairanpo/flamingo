@@ -37,7 +37,7 @@ CSP, no direct calls from the page to YouTube), yt-dlp as the engine
                                  │ HTTP on the home network
         ┌────────────────────────┴───────────────────────┐
   ┌─────┴──────────── each computer ─────────┐   (phone: browser only,
-  │  yt-agent (Go, runs as the logged-in OS  │    streams via server)
+  │  flamingo-agent (Go, runs as the logged-in OS  │    streams via server)
   │  user, listens on 127.0.0.1:8421)        │
   │   • serves the UI to the browser         │
   │   • proxies /api/* to the server         │
@@ -99,8 +99,8 @@ tags and name. "Reset name" clears the layer it sits on.
 ## Go layout
 
 ```
-cmd/yt/              cobra root: serve, agent, migrate, user, import, sync, get…
-internal/config/     viper, reading YAML with YT_* environment overrides
+cmd/flamingo/              cobra root: serve, agent, migrate, user, import, sync, get…
+internal/config/     viper, reading YAML with FLAMINGO_* environment overrides
 internal/db/         pgx pool; queries in sqlc (typed Go from plain SQL)
 internal/db/migrations/  goose SQL files, embedded with go:embed
 internal/auth/       argon2id passwords, server-side sessions, CSRF check
@@ -123,20 +123,20 @@ cgo).
 listen: ":8420"
 public_url: "http://192.168.1.10:8420"
 database:
-  url: "postgres://yt:${YT_DB_PASSWORD}@db:5432/yt?sslmode=disable"
+  url: "postgres://flamingo:${FLAMINGO_DB_PASSWORD}@db:5432/flamingo?sslmode=disable"
   migrate_on_start: true
 storage:
   thumbs_dir: /data/thumbs
 auth:
   session_ttl: 720h
-  secret_key_file: /run/secrets/yt_key   # encrypts Toggl keys
+  secret_key_file: /run/secrets/flamingo_key   # encrypts Toggl keys
   signup: invite        # invite | closed (no open sign-up)
 ytdlp:
   path: yt-dlp
   extra_args: []
 ```
 
-`agent.yaml` (one per computer, in `~/.config/yt/agent.yaml`):
+`agent.yaml` (one per computer, in `~/.config/flamingo/agent.yaml`):
 ```yaml
 listen: "127.0.0.1:8421"
 server_url: "http://192.168.1.10:8420"
@@ -151,7 +151,7 @@ ytdlp:
 ```
 
 Viper reads the YAML. Any key can be overridden by an environment
-variable (`YT_DATABASE_URL`, `YT_MEDIA_DIR`…), and secrets such as passwords
+variable (`FLAMINGO_DATABASE_URL`, `FLAMINGO_MEDIA_DIR`…), and secrets such as passwords
 always come from the environment or files.
 
 ## Docker Compose
@@ -161,7 +161,7 @@ always come from the environment or files.
 - `server`: built from `deploy/Dockerfile` (a Go build stage, then a slim
   runtime stage with yt-dlp + ffmpeg). Mounts `server.yaml` and the `thumbs`
   volume, and starts once `db` is healthy. Runs `goose up` (embedded) on
-  start, or `yt migrate up` by hand.
+  start, or `flamingo migrate up` by hand.
 - Port 8420 is open on the home network only.
 
 The agent is **not** in Compose. It must write to each computer's own disk
@@ -170,7 +170,7 @@ user unit, like `ytlocal.service` today.
 
 ## Accounts and security
 
-- `yt user add <name>` (CLI on the server) creates users. The first one is
+- `flamingo user add <name>` (CLI on the server) creates users. The first one is
   an admin. There is no open sign-up.
 - Login: a form posts name + password, the server creates a `sessions` row
   and sends an HttpOnly, SameSite=Strict cookie. Sessions can be revoked.
@@ -185,7 +185,7 @@ user unit, like `ytlocal.service` today.
 
 ## Moving your existing data
 
-`yt import sqlite ~/.local/share/ytlocal/catalog.db --user jair --device <id>`
+`flamingo import sqlite ~/.local/share/ytlocal/catalog.db --user jair --device <id>`
 - Copies sources, videos and memberships into the catalog tables, and
   watched/progress/stars/pins/marks/collections/topics/sorts/Toggl settings
   into your user rows.
@@ -205,7 +205,7 @@ until the switch-over in phase 7.
 1. **Skeleton.** Go module, cobra commands, viper YAML, Compose with
    Postgres, goose with the first migration, `/healthz`. *Done when:*
    `docker compose up` gives a healthy server.
-2. **Schema + import.** All migrations, sqlc queries, `yt import sqlite`.
+2. **Schema + import.** All migrations, sqlc queries, `flamingo import sqlite`.
    *Done when:* your real data imports and its counts match SQLite.
    *Done 2026-11-15*, with these changes:
    - "Picks" are not playlists: they are a per-user list per channel
@@ -217,7 +217,7 @@ until the switch-over in phase 7.
      only seen in other people's playlists, and a later sync fills them in.
    - Not carried over: `left_source` (empty in the real data) and Toggl
      settings for names no channel matches (one: "Mikel Hyperpolyglot").
-3. **Accounts.** Users, login page, sessions, the `yt user` commands.
+3. **Accounts.** Users, login page, sessions, the `flamingo user` commands.
 4. **API parity.** Port every `/api/*` route from `server.py` with the same
    JSON shapes, per user: state, sources, browse, sync jobs, pins, shelve,
    forget, topics, sort, collections, marks, chapters, thumbs, stream
@@ -236,18 +236,18 @@ until the switch-over in phase 7.
      which sqlc handles badly, so SQL is written by hand with named columns.
    - The schema now uses the strict *Mere Mortals* prefixes
      (docs/db-conventions.md).
-   - "On this computer" comes from an `X-Yt-Device` header, which the
+   - "On this computer" comes from an `X-Flamingo-Device` header, which the
      agent will set (phase 6).
    - Downloads imported from the old app count as part of your library.
    *Step 4b done 2026-11-15:* adding sources (Add box, Browse, job cards)
-   and `yt sync`.
+   and `flamingo sync`.
    - The catalog is shared: a channel two people track is listed once.
      Adding it puts it in your library only.
-   - A source is skipped by `yt sync` only when everyone tracking it has
+   - A source is skipped by `flamingo sync` only when everyone tracking it has
      shelved it.
    - Job cards are per person and live in memory, as before.
    - The server image carries a pinned, checksum-checked yt-dlp.
-   - Still manual: nothing runs `yt sync` on a schedule yet.
+   - Still manual: nothing runs `flamingo sync` on a schedule yet.
 5. **UI move.** Move the page out of `ui.py` into `web/`. Add login and
    logout, show the user's name, and mark which videos are on *this*
    computer vs. none.
@@ -255,7 +255,7 @@ until the switch-over in phase 7.
    byte ranges, buffering, inventory reports, pairing, systemd unit.
 7. **Toggl layers + switch-over.** Per-user keys and settings screen,
    `toggl_rules` layering, playlist tag/name editing. Import your data
-   for real, swap `ytlocal.service` for `yt-agent` plus Compose, and keep the
+   for real, swap `ytlocal.service` for `flamingo-agent` plus Compose, and keep the
    Python code for a while before deleting it.
 8. **Later: cloud.** Hosted server, Caddy/HTTPS, backups (`pg_dump` on a
    schedule), maybe a phone-friendly layout.

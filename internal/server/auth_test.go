@@ -16,16 +16,16 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/Jairanpo/yt/internal/auth"
-	"github.com/Jairanpo/yt/internal/config"
-	"github.com/Jairanpo/yt/internal/db"
+	"github.com/Jairanpo/flamingo/internal/auth"
+	"github.com/Jairanpo/flamingo/internal/config"
+	"github.com/Jairanpo/flamingo/internal/db"
 )
 
 func testServer(t *testing.T) (*httptest.Server, *pgxpool.Pool, *Server) {
 	t.Helper()
-	url := os.Getenv("YT_TEST_DATABASE_URL")
+	url := os.Getenv("FLAMINGO_TEST_DATABASE_URL")
 	if url == "" {
-		t.Skip("YT_TEST_DATABASE_URL not set")
+		t.Skip("FLAMINGO_TEST_DATABASE_URL not set")
 	}
 	ctx := context.Background()
 	pool, err := db.Open(ctx, url)
