@@ -43,6 +43,7 @@ func (s *Server) Handler() http.Handler {
 
 	mux.HandleFunc("GET /", s.requireUser(s.home))
 	mux.HandleFunc("GET /api/me", s.requireUser(s.me))
+	s.routesAPI(mux)
 	return securityHeaders(sameOrigin(mux))
 }
 

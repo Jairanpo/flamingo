@@ -27,15 +27,15 @@ CREATE TRIGGER channels_set_updated_at BEFORE UPDATE ON channels
 
 CREATE TABLE playlists
 (
-    plist_id         VARCHAR(64)  PRIMARY KEY
-        CONSTRAINT plist_id_valid CHECK (plist_id ~ '^[A-Za-z0-9_-]+$'),
+    play_id         VARCHAR(64)  PRIMARY KEY
+        CONSTRAINT play_id_valid CHECK (play_id ~ '^[A-Za-z0-9_-]+$'),
     -- NULL when the owner could not be found out (YouTube hid it).
     chan_id          VARCHAR(24)  REFERENCES channels (chan_id),
-    plist_section    VARCHAR(16)  NOT NULL DEFAULT 'PLAYLIST' REFERENCES playlist_sections (plist_section),
-    plist_title      VARCHAR(256) NOT NULL,
-    plist_synced_at  TIMESTAMPTZ,
-    plist_created_at TIMESTAMPTZ  NOT NULL DEFAULT now(),
-    plist_updated_at TIMESTAMPTZ  NOT NULL DEFAULT now()
+    plse_code    VARCHAR(16)  NOT NULL DEFAULT 'PLAYLIST' REFERENCES playlist_sections (plse_code),
+    play_title      VARCHAR(256) NOT NULL,
+    play_synced_at  TIMESTAMPTZ,
+    play_created_at TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    play_updated_at TIMESTAMPTZ  NOT NULL DEFAULT now()
 );
 
 CREATE INDEX ON playlists (chan_id);
@@ -45,7 +45,7 @@ A YouTube playlist, course or live-stream list. The videos keep the order
 its author chose (see playlist_videos).';
 
 CREATE TRIGGER playlists_set_updated_at BEFORE UPDATE ON playlists
-    FOR EACH ROW EXECUTE FUNCTION set_updated_at('plist_updated_at');
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at('play_updated_at');
 
 CREATE TABLE videos
 (
@@ -86,14 +86,14 @@ CREATE TRIGGER videos_set_updated_at BEFORE UPDATE ON videos
 
 CREATE TABLE playlist_videos
 (
-    plist_id       VARCHAR(64) NOT NULL REFERENCES playlists (plist_id) ON DELETE CASCADE,
+    play_id       VARCHAR(64) NOT NULL REFERENCES playlists (play_id) ON DELETE CASCADE,
     vid_id         VARCHAR(11) NOT NULL REFERENCES videos (vid_id) ON DELETE CASCADE,
-    plvid_position INTEGER     NOT NULL
-        CONSTRAINT plvid_position_not_negative CHECK (plvid_position >= 0),
-    PRIMARY KEY (plist_id, vid_id)
+    plvi_position INTEGER     NOT NULL
+        CONSTRAINT plvi_position_not_negative CHECK (plvi_position >= 0),
+    PRIMARY KEY (play_id, vid_id)
 );
 
-CREATE INDEX idx_playlist_videos_position ON playlist_videos (plist_id, plvid_position);
+CREATE INDEX idx_playlist_videos_position ON playlist_videos (play_id, plvi_position);
 CREATE INDEX ON playlist_videos (vid_id);
 
 COMMENT ON TABLE playlist_videos IS 'Linking
@@ -102,12 +102,12 @@ Which videos a playlist holds, in the author''s order.';
 CREATE TABLE video_chapters
 (
     vid_id             VARCHAR(11)   NOT NULL REFERENCES videos (vid_id) ON DELETE CASCADE,
-    chap_start_seconds NUMERIC(9, 3) NOT NULL
-        CONSTRAINT chap_start_not_negative CHECK (chap_start_seconds >= 0),
-    chap_end_seconds   NUMERIC(9, 3) NOT NULL,
-    chap_title         VARCHAR(256)  NOT NULL,
-    PRIMARY KEY (vid_id, chap_start_seconds),
-    CONSTRAINT chap_ends_after_start CHECK (chap_end_seconds >= chap_start_seconds)
+    vich_start_seconds NUMERIC(9, 3) NOT NULL
+        CONSTRAINT vich_start_not_negative CHECK (vich_start_seconds >= 0),
+    vich_end_seconds   NUMERIC(9, 3) NOT NULL,
+    vich_title         VARCHAR(256)  NOT NULL,
+    PRIMARY KEY (vid_id, vich_start_seconds),
+    CONSTRAINT vich_ends_after_start CHECK (vich_end_seconds >= vich_start_seconds)
 );
 
 COMMENT ON TABLE video_chapters IS 'Data

@@ -83,7 +83,7 @@ type chapterRow struct {
 }
 
 type userSourceRow struct {
-	ID        string // chan_id or plist_id
+	ID        string // chan_id or play_id
 	Shelved   bool
 	PinnedAt  *time.Time
 	Sort      *string
@@ -128,6 +128,19 @@ type downloadRow struct {
 	VidID        string
 	Size         *int64
 	DownloadedAt time.Time
+	AudioOnly    bool
+}
+
+// What an audio-only fetch leaves on disk (the Python app's AUDIO_EXTS).
+var audioExts = []string{".m4a", ".mp3", ".opus", ".ogg", ".aac", ".flac", ".wav"}
+
+func isAudio(path string) bool {
+	for _, e := range audioExts {
+		if strings.HasSuffix(path, e) {
+			return true
+		}
+	}
+	return false
 }
 
 func (p *plan) warn(format string, a ...any) {
@@ -135,6 +148,14 @@ func (p *plan) warn(format string, a ...any) {
 }
 
 func key(name string) string { return strings.ToLower(strings.TrimSpace(name)) }
+
+// keepText stores text exactly as written; only blank text becomes NULL.
+func keepText(s string) *string {
+	if strings.TrimSpace(s) == "" {
+		return nil
+	}
+	return &s
+}
 
 func nonEmpty(s string) *string {
 	s = strings.TrimSpace(s)
@@ -382,7 +403,7 @@ func buildPlan(ctx context.Context, s *snapshot, res Resolver, now time.Time) (*
 	leftSource := 0
 	for _, v := range s.videos {
 		row := videoRow{
-			ID: v.ID, Title: v.Title, Description: nonEmpty(v.Description.String),
+			ID: v.ID, Title: v.Title, Description: keepText(v.Description.String),
 			MonthOnly: v.DateApprox, CreatedAt: epoch(v.FirstSeen),
 		}
 		if c, ok := uploader[v.ID]; ok {
@@ -432,7 +453,9 @@ func buildPlan(ctx context.Context, s *snapshot, res Resolver, now time.Time) (*
 		}
 		p.videos = append(p.videos, row)
 
-		if v.Watched || v.Starred || v.Hidden == 1 || v.Progress > 0 {
+		// A download is something this user chose to keep, so it stays in their
+		// library even when no source lists it any more.
+		if v.Watched || v.Starred || v.Hidden == 1 || v.Progress > 0 || v.DownloadedPath.String != "" {
 			uv := userVideoRow{VidID: v.ID, Watched: v.Watched, Starred: v.Starred,
 				Hidden: v.Hidden == 1, Progress: max(v.Progress, 0)}
 			if v.Watched {
@@ -441,7 +464,8 @@ func buildPlan(ctx context.Context, s *snapshot, res Resolver, now time.Time) (*
 			p.userVideos = append(p.userVideos, uv)
 		}
 		if v.DownloadedPath.String != "" {
-			d := downloadRow{VidID: v.ID, DownloadedAt: epoch(v.DownloadedAt.Int64)}
+			d := downloadRow{VidID: v.ID, DownloadedAt: epoch(v.DownloadedAt.Int64),
+				AudioOnly: isAudio(v.DownloadedPath.String)}
 			if v.Filesize.Valid {
 				d.Size = &v.Filesize.Int64
 			}

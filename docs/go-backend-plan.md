@@ -223,6 +223,22 @@ until the switch-over in phase 7.
    forget, topics, sort, collections, marks, chapters, thumbs, stream
    relay. Python's API output is recorded first and used as golden tests,
    so the UI barely changes. This is the largest phase.
+   *Step 4a done 2026-11-15:* reading the library and every per-person
+   change (stars, watched, hidden, progress, marks, collections, pins,
+   shelves, forget, sorts, topics, Toggl settings). Checked against the
+   Python app on the same snapshot; what still differs is on purpose:
+   - A channel lists videos in YouTube's upload order rather than by
+     month-rounded dates.
+   - Ties always break the same way.
+   - Groups use real channel ids.
+   Other changes:
+   - sqlc is dropped. The main video list is built from optional filters,
+     which sqlc handles badly, so SQL is written by hand with named columns.
+   - The schema now uses the strict *Mere Mortals* prefixes
+     (docs/db-conventions.md).
+   - "On this computer" comes from an `X-Yt-Device` header, which the
+     agent will set (phase 6).
+   - Downloads imported from the old app count as part of your library.
 5. **UI move.** Move the page out of `ui.py` into `web/`. Add login and
    logout, show the user's name, and mark which videos are on *this*
    computer vs. none.

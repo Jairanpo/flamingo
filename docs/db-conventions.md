@@ -12,13 +12,34 @@ the idea in its own words.
 |---|---|---|
 | Table | plural, snake_case, one subject per table | `videos`, `playlists` |
 | Linking table | the two subjects it joins, singular + plural | `playlist_videos`, `user_playlists` |
-| Column | `<prefix>_<what>`, where the prefix is a short, fixed abbreviation of the table | `vid_title`, `plist_name` |
+| Column | `<prefix>_<what>` on **every** column that isn't a foreign key. The prefix is 3–4 letters taken from the table's name, unique in the database, and never changes (*Mere Mortals*, ch. 7: "use the first three or four letters of the table name", applied consistently) | `vid_title`, `play_title`, `plse_rank` |
+| Validation table | one `<prefix>_code` column holding the value | `sort_orders.sort_code = 'NEWEST'` |
 | Primary key | `<prefix>_id`, never a bare `id` | `vid_id`, `user_id` |
 | Foreign key | the **same name** as the key it points to | `playlist_videos.vid_id → videos.vid_id` |
 | Timestamps | `<prefix>_created_at`, `<prefix>_updated_at`, `<prefix>_deleted_at` (soft delete), all `TIMESTAMPTZ` | `vid_created_at` |
 | Validation value | UPPER_SNAKE, checked with a regex | `'COURSE'`, `'LIVE'` |
 | Constraint | named after the rule it enforces | `vid_duration_not_negative` |
 | Index | `idx_<table>_<columns>` (or `CREATE INDEX ON` when the name doesn't matter) | `idx_playlist_videos_position` |
+
+### Prefixes
+
+| Table | Prefix | | Table | Prefix |
+|---|---|---|---|---|
+| `users` | `user_` | | `user_channels` | `usch_` |
+| `user_roles` | `usro_` | | `user_playlists` | `uspl_` |
+| `sessions` | `sess_` | | `user_picks` | `uspi_` |
+| `channels` | `chan_` | | `user_pick_videos` | `upvi_` |
+| `playlists` | `play_` | | `user_videos` | `usvi_` |
+| `playlist_sections` | `plse_` | | `collections` | `coll_` |
+| `playlist_videos` | `plvi_` | | `collection_videos` | `covi_` |
+| `videos` | `vid_` | | `marks` | `mark_` |
+| `video_chapters` | `vich_` | | `topics` | `topi_` |
+| `sort_orders` | `sort_` | | `channel_topics` | `chto_` |
+| `tags` | `tag_` | | `toggl_channel_rules` | `tcru_` |
+| `devices` | `devi_` | | `toggl_channel_rule_tags` | `tcrt_` |
+| `device_videos` | `dvvi_` | | | |
+
+A new table picks its prefix the same way and adds it here first.
 
 Column names are unique across the whole database, except for foreign keys,
 which repeat their key's name on purpose. A column name alone then tells you

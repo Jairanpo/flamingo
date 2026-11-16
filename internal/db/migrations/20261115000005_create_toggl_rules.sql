@@ -24,11 +24,11 @@ CREATE TABLE toggl_channel_rules
     chan_id           VARCHAR(24)  NOT NULL REFERENCES channels (chan_id),
     -- What to call the time entry. NULL: the playlist's title, else the
     -- channel's name.
-    tgrule_entry_name VARCHAR(256),
+    tcru_entry_name VARCHAR(256),
     -- The Toggl project, by name. NULL: no project.
-    tgrule_project    VARCHAR(128),
-    tgrule_created_at TIMESTAMPTZ  NOT NULL DEFAULT now(),
-    tgrule_updated_at TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    tcru_project    VARCHAR(128),
+    tcru_created_at TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    tcru_updated_at TIMESTAMPTZ  NOT NULL DEFAULT now(),
     PRIMARY KEY (user_id, chan_id)
 );
 
@@ -37,7 +37,7 @@ How a channel''s videos are tracked in one user''s Toggl Track. The
 playlist layer arrives with phase 7.';
 
 CREATE TRIGGER toggl_channel_rules_set_updated_at BEFORE UPDATE ON toggl_channel_rules
-    FOR EACH ROW EXECUTE FUNCTION set_updated_at('tgrule_updated_at');
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at('tcru_updated_at');
 
 CREATE TABLE toggl_channel_rule_tags
 (

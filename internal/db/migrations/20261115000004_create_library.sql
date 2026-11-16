@@ -12,26 +12,26 @@ CREATE TABLE user_channels
 (
     user_id          INTEGER     NOT NULL REFERENCES users (user_id) ON DELETE CASCADE,
     chan_id          VARCHAR(24) NOT NULL REFERENCES channels (chan_id),
-    uchan_shelved    BOOLEAN     NOT NULL DEFAULT false,
-    uchan_pinned_at  TIMESTAMPTZ,
-    sort_order       VARCHAR(16) REFERENCES sort_orders (sort_order),
-    uchan_created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    usch_shelved    BOOLEAN     NOT NULL DEFAULT false,
+    usch_pinned_at  TIMESTAMPTZ,
+    sort_code       VARCHAR(16) REFERENCES sort_orders (sort_code),
+    usch_created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     PRIMARY KEY (user_id, chan_id)
 );
 
 COMMENT ON TABLE user_channels IS 'Linking
-A channel a user tracks. Shelved: kept but out of the way. sort_order NULL
+A channel a user tracks. Shelved: kept but out of the way. sort_code NULL
 means the user''s default.';
 
 CREATE TABLE user_playlists
 (
     user_id           INTEGER     NOT NULL REFERENCES users (user_id) ON DELETE CASCADE,
-    plist_id          VARCHAR(64) NOT NULL REFERENCES playlists (plist_id),
-    uplist_shelved    BOOLEAN     NOT NULL DEFAULT false,
-    uplist_pinned_at  TIMESTAMPTZ,
-    sort_order        VARCHAR(16) REFERENCES sort_orders (sort_order),
-    uplist_created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    PRIMARY KEY (user_id, plist_id)
+    play_id          VARCHAR(64) NOT NULL REFERENCES playlists (play_id),
+    uspl_shelved    BOOLEAN     NOT NULL DEFAULT false,
+    uspl_pinned_at  TIMESTAMPTZ,
+    sort_code        VARCHAR(16) REFERENCES sort_orders (sort_code),
+    uspl_created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (user_id, play_id)
 );
 
 COMMENT ON TABLE user_playlists IS 'Linking
@@ -40,13 +40,13 @@ as user_channels.';
 
 CREATE TABLE user_picks
 (
-    upick_id         INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    uspi_id         INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     user_id          INTEGER     NOT NULL REFERENCES users (user_id) ON DELETE CASCADE,
     chan_id          VARCHAR(24) NOT NULL REFERENCES channels (chan_id),
-    upick_shelved    BOOLEAN     NOT NULL DEFAULT false,
-    upick_pinned_at  TIMESTAMPTZ,
-    sort_order       VARCHAR(16) REFERENCES sort_orders (sort_order),
-    upick_created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    uspi_shelved    BOOLEAN     NOT NULL DEFAULT false,
+    uspi_pinned_at  TIMESTAMPTZ,
+    sort_code       VARCHAR(16) REFERENCES sort_orders (sort_code),
+    uspi_created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     CONSTRAINT user_picks_one_per_channel UNIQUE (user_id, chan_id)
 );
 
@@ -56,11 +56,11 @@ shown as that channel''s "Picked videos" list.';
 
 CREATE TABLE user_pick_videos
 (
-    upick_id       INTEGER     NOT NULL REFERENCES user_picks (upick_id) ON DELETE CASCADE,
+    uspi_id       INTEGER     NOT NULL REFERENCES user_picks (uspi_id) ON DELETE CASCADE,
     vid_id         VARCHAR(11) NOT NULL REFERENCES videos (vid_id),
-    upvid_position INTEGER     NOT NULL
-        CONSTRAINT upvid_position_not_negative CHECK (upvid_position >= 0),
-    PRIMARY KEY (upick_id, vid_id)
+    upvi_position INTEGER     NOT NULL
+        CONSTRAINT upvi_position_not_negative CHECK (upvi_position >= 0),
+    PRIMARY KEY (uspi_id, vid_id)
 );
 
 COMMENT ON TABLE user_pick_videos IS 'Linking
@@ -70,19 +70,19 @@ CREATE TABLE user_videos
 (
     user_id                INTEGER       NOT NULL REFERENCES users (user_id) ON DELETE CASCADE,
     vid_id                 VARCHAR(11)   NOT NULL REFERENCES videos (vid_id),
-    uvid_watched           BOOLEAN       NOT NULL DEFAULT false,
+    usvi_watched           BOOLEAN       NOT NULL DEFAULT false,
     -- NULL when watched before times were recorded, or not watched.
-    uvid_watched_at        TIMESTAMPTZ,
-    uvid_progress_seconds  NUMERIC(9, 3) NOT NULL DEFAULT 0
-        CONSTRAINT uvid_progress_not_negative CHECK (uvid_progress_seconds >= 0),
-    uvid_starred           BOOLEAN       NOT NULL DEFAULT false,
+    usvi_watched_at        TIMESTAMPTZ,
+    usvi_progress_seconds  NUMERIC(9, 3) NOT NULL DEFAULT 0
+        CONSTRAINT usvi_progress_not_negative CHECK (usvi_progress_seconds >= 0),
+    usvi_starred           BOOLEAN       NOT NULL DEFAULT false,
     -- Hidden by this user from every view. (Videos YouTube made unavailable
     -- are hidden for everyone by videos.vid_unavailable_since instead.)
-    uvid_hidden            BOOLEAN       NOT NULL DEFAULT false,
-    uvid_created_at        TIMESTAMPTZ   NOT NULL DEFAULT now(),
-    uvid_updated_at        TIMESTAMPTZ   NOT NULL DEFAULT now(),
+    usvi_hidden            BOOLEAN       NOT NULL DEFAULT false,
+    usvi_created_at        TIMESTAMPTZ   NOT NULL DEFAULT now(),
+    usvi_updated_at        TIMESTAMPTZ   NOT NULL DEFAULT now(),
     PRIMARY KEY (user_id, vid_id),
-    CONSTRAINT uvid_watched_at_only_when_watched CHECK (uvid_watched OR uvid_watched_at IS NULL)
+    CONSTRAINT usvi_watched_at_only_when_watched CHECK (usvi_watched OR usvi_watched_at IS NULL)
 );
 
 COMMENT ON TABLE user_videos IS 'Linking
@@ -90,14 +90,14 @@ One user''s state for one video. A row exists only once there is something
 to remember; no row means unwatched, unstarred, at 0:00.';
 
 CREATE TRIGGER user_videos_set_updated_at BEFORE UPDATE ON user_videos
-    FOR EACH ROW EXECUTE FUNCTION set_updated_at('uvid_updated_at');
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at('usvi_updated_at');
 
 CREATE TABLE collections
 (
     coll_id         INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     user_id         INTEGER     NOT NULL REFERENCES users (user_id) ON DELETE CASCADE,
     coll_name       VARCHAR(64) NOT NULL,
-    sort_order      VARCHAR(16) REFERENCES sort_orders (sort_order),
+    sort_code      VARCHAR(16) REFERENCES sort_orders (sort_code),
     coll_created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     coll_updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -114,15 +114,15 @@ CREATE TABLE collection_videos
 (
     coll_id          INTEGER     NOT NULL REFERENCES collections (coll_id) ON DELETE CASCADE,
     vid_id           VARCHAR(11) NOT NULL REFERENCES videos (vid_id),
-    collvid_rank     INTEGER     NOT NULL,
-    collvid_added_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    covi_rank     INTEGER     NOT NULL,
+    covi_added_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     PRIMARY KEY (coll_id, vid_id)
 );
 
-CREATE INDEX idx_collection_videos_rank ON collection_videos (coll_id, collvid_rank);
+CREATE INDEX idx_collection_videos_rank ON collection_videos (coll_id, covi_rank);
 
 COMMENT ON TABLE collection_videos IS 'Linking
-The videos in a collection, ordered by collvid_rank.';
+The videos in a collection, ordered by covi_rank.';
 
 CREATE TABLE marks
 (
@@ -142,15 +142,15 @@ A spot a user marked in a video, with an optional note.';
 
 CREATE TABLE topics
 (
-    topic_id         INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    topi_id         INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     user_id          INTEGER     NOT NULL REFERENCES users (user_id) ON DELETE CASCADE,
-    topic_name       VARCHAR(64) NOT NULL,
-    topic_created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    topi_name       VARCHAR(64) NOT NULL,
+    topi_created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     -- lets channel_topics require the topic to be the same user's
-    CONSTRAINT topics_user_topic_unique UNIQUE (user_id, topic_id)
+    CONSTRAINT topics_user_topic_unique UNIQUE (user_id, topi_id)
 );
 
-CREATE UNIQUE INDEX idx_topics_user_name ON topics (user_id, lower(topic_name));
+CREATE UNIQUE INDEX idx_topics_user_name ON topics (user_id, lower(topi_name));
 
 COMMENT ON TABLE topics IS 'Data
 A shelf a user sorts creators onto in the sidebar (Japanese, Racing...).';
@@ -159,9 +159,9 @@ CREATE TABLE channel_topics
 (
     user_id  INTEGER     NOT NULL REFERENCES users (user_id) ON DELETE CASCADE,
     chan_id  VARCHAR(24) NOT NULL REFERENCES channels (chan_id),
-    topic_id INTEGER     NOT NULL,
+    topi_id INTEGER     NOT NULL,
     PRIMARY KEY (user_id, chan_id),
-    FOREIGN KEY (user_id, topic_id) REFERENCES topics (user_id, topic_id) ON DELETE CASCADE
+    FOREIGN KEY (user_id, topi_id) REFERENCES topics (user_id, topi_id) ON DELETE CASCADE
 );
 
 COMMENT ON TABLE channel_topics IS 'Linking

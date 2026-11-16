@@ -92,9 +92,9 @@ func (w *writer) all(p *plan, o Options) error {
 		display = o.UserName
 	}
 	err := w.tx.QueryRow(w.ctx, `
-		INSERT INTO users (user_name, user_display_name, user_role, sort_order)
+		INSERT INTO users (user_name, user_display_name, usro_code, sort_code)
 		VALUES ($1, $2, CASE WHEN EXISTS (SELECT 1 FROM users) THEN 'MEMBER' ELSE 'ADMIN' END, $3)
-		ON CONFLICT (user_name) DO UPDATE SET sort_order = EXCLUDED.sort_order
+		ON CONFLICT (user_name) DO UPDATE SET sort_code = EXCLUDED.sort_code
 		RETURNING user_id`, o.UserName, display, p.defaultSort).Scan(&w.user)
 	if err != nil {
 		return fmt.Errorf("creating user %s: %w", o.UserName, err)
@@ -130,13 +130,13 @@ func (w *writer) all(p *plan, o Options) error {
 	}
 
 	if err := w.batch("playlists", len(p.playlists), `
-		INSERT INTO playlists (plist_id, chan_id, plist_section, plist_title, plist_synced_at, plist_created_at)
+		INSERT INTO playlists (play_id, chan_id, plse_code, play_title, play_synced_at, play_created_at)
 		VALUES ($1, $2, $3, $4, $5, $6)
-		ON CONFLICT (plist_id) DO UPDATE SET
+		ON CONFLICT (play_id) DO UPDATE SET
 			chan_id         = COALESCE(EXCLUDED.chan_id, playlists.chan_id),
-			plist_section   = EXCLUDED.plist_section,
-			plist_title     = EXCLUDED.plist_title,
-			plist_synced_at = GREATEST(playlists.plist_synced_at, EXCLUDED.plist_synced_at)`,
+			plse_code   = EXCLUDED.plse_code,
+			play_title     = EXCLUDED.play_title,
+			play_synced_at = GREATEST(playlists.play_synced_at, EXCLUDED.play_synced_at)`,
 		func(i int) []any {
 			r := p.playlists[i]
 			return []any{r.ID, r.ChanID, r.Section, r.Title, r.SyncedAt, r.CreatedAt}
@@ -173,11 +173,11 @@ func (w *writer) all(p *plan, o Options) error {
 	for i, r := range p.playlists {
 		plistIDs[i] = r.ID
 	}
-	if err := w.exec("DELETE FROM playlist_videos WHERE plist_id = ANY($1)", plistIDs); err != nil {
+	if err := w.exec("DELETE FROM playlist_videos WHERE play_id = ANY($1)", plistIDs); err != nil {
 		return err
 	}
 	if err := w.batch("playlist_videos", len(p.plVideos), `
-		INSERT INTO playlist_videos (plist_id, vid_id, plvid_position) VALUES ($1, $2, $3)`,
+		INSERT INTO playlist_videos (play_id, vid_id, plvi_position) VALUES ($1, $2, $3)`,
 		func(i int) []any {
 			r := p.plVideos[i]
 			return []any{r.PlistID, r.VidID, r.Position}
@@ -189,7 +189,7 @@ func (w *writer) all(p *plan, o Options) error {
 		return err
 	}
 	if err := w.batch("video_chapters", len(p.chapters), `
-		INSERT INTO video_chapters (vid_id, chap_start_seconds, chap_end_seconds, chap_title)
+		INSERT INTO video_chapters (vid_id, vich_start_seconds, vich_end_seconds, vich_title)
 		VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING`,
 		func(i int) []any {
 			c := p.chapters[i]
@@ -200,7 +200,7 @@ func (w *writer) all(p *plan, o Options) error {
 
 	// --- the user's library (replaced) -------------------------------------
 	if err := w.batch("user_channels", len(p.userChans), `
-		INSERT INTO user_channels (user_id, chan_id, uchan_shelved, uchan_pinned_at, sort_order, uchan_created_at)
+		INSERT INTO user_channels (user_id, chan_id, usch_shelved, usch_pinned_at, sort_code, usch_created_at)
 		VALUES ($1, $2, $3, $4, $5, $6)`,
 		func(i int) []any {
 			r := p.userChans[i]
@@ -209,7 +209,7 @@ func (w *writer) all(p *plan, o Options) error {
 		return err
 	}
 	if err := w.batch("user_playlists", len(p.userPlists), `
-		INSERT INTO user_playlists (user_id, plist_id, uplist_shelved, uplist_pinned_at, sort_order, uplist_created_at)
+		INSERT INTO user_playlists (user_id, play_id, uspl_shelved, uspl_pinned_at, sort_code, uspl_created_at)
 		VALUES ($1, $2, $3, $4, $5, $6)`,
 		func(i int) []any {
 			r := p.userPlists[i]
@@ -222,14 +222,14 @@ func (w *writer) all(p *plan, o Options) error {
 	for _, pk := range p.picks {
 		var id int32
 		if err := w.tx.QueryRow(w.ctx, `
-			INSERT INTO user_picks (user_id, chan_id, upick_shelved, upick_pinned_at, sort_order, upick_created_at)
-			VALUES ($1, $2, $3, $4, $5, $6) RETURNING upick_id`,
+			INSERT INTO user_picks (user_id, chan_id, uspi_shelved, uspi_pinned_at, sort_code, uspi_created_at)
+			VALUES ($1, $2, $3, $4, $5, $6) RETURNING uspi_id`,
 			w.user, pk.ID, pk.Shelved, pk.PinnedAt, pk.Sort, pk.CreatedAt).Scan(&id); err != nil {
 			return fmt.Errorf("writing user_picks: %w", err)
 		}
 		b := &pgx.Batch{}
 		for _, v := range pk.Videos {
-			b.Queue(`INSERT INTO user_pick_videos (upick_id, vid_id, upvid_position) VALUES ($1, $2, $3)`,
+			b.Queue(`INSERT INTO user_pick_videos (uspi_id, vid_id, upvi_position) VALUES ($1, $2, $3)`,
 				id, v.VidID, v.Position)
 		}
 		if err := w.tx.SendBatch(w.ctx, b).Close(); err != nil {
@@ -240,8 +240,8 @@ func (w *writer) all(p *plan, o Options) error {
 	w.rep.Counts = append(w.rep.Counts, Count{"user_picks", len(p.picks)}, Count{"user_pick_videos", pickVids})
 
 	if err := w.batch("user_videos", len(p.userVideos), `
-		INSERT INTO user_videos (user_id, vid_id, uvid_watched, uvid_watched_at, uvid_progress_seconds,
-		                         uvid_starred, uvid_hidden)
+		INSERT INTO user_videos (user_id, vid_id, usvi_watched, usvi_watched_at, usvi_progress_seconds,
+		                         usvi_starred, usvi_hidden)
 		VALUES ($1, $2, $3, $4, $5, $6, $7)`,
 		func(i int) []any {
 			r := p.userVideos[i]
@@ -254,13 +254,13 @@ func (w *writer) all(p *plan, o Options) error {
 	for _, c := range p.collections {
 		var id int32
 		if err := w.tx.QueryRow(w.ctx, `
-			INSERT INTO collections (user_id, coll_name, sort_order, coll_created_at)
+			INSERT INTO collections (user_id, coll_name, sort_code, coll_created_at)
 			VALUES ($1, $2, $3, $4) RETURNING coll_id`, w.user, c.Name, c.Sort, c.CreatedAt).Scan(&id); err != nil {
 			return fmt.Errorf("writing collections: %w", err)
 		}
 		b := &pgx.Batch{}
 		for _, it := range c.Items {
-			b.Queue(`INSERT INTO collection_videos (coll_id, vid_id, collvid_rank, collvid_added_at)
+			b.Queue(`INSERT INTO collection_videos (coll_id, vid_id, covi_rank, covi_added_at)
 			         VALUES ($1, $2, $3, $4)`, id, it.VideoID, it.Rank, epoch(it.AddedAt))
 		}
 		if err := w.tx.SendBatch(w.ctx, b).Close(); err != nil {
@@ -287,15 +287,15 @@ func (w *writer) all(p *plan, o Options) error {
 	linked := 0
 	for _, name := range topicNames {
 		var id int32
-		if err := w.tx.QueryRow(w.ctx, `INSERT INTO topics (user_id, topic_name) VALUES ($1, $2) RETURNING topic_id`,
+		if err := w.tx.QueryRow(w.ctx, `INSERT INTO topics (user_id, topi_name) VALUES ($1, $2) RETURNING topi_id`,
 			w.user, name).Scan(&id); err != nil {
 			return fmt.Errorf("writing topics: %w", err)
 		}
 		for _, chanID := range p.topics[name] {
 			// One topic per creator: a later name for the same channel wins.
 			if err := w.exec(`
-				INSERT INTO channel_topics (user_id, chan_id, topic_id) VALUES ($1, $2, $3)
-				ON CONFLICT (user_id, chan_id) DO UPDATE SET topic_id = EXCLUDED.topic_id`,
+				INSERT INTO channel_topics (user_id, chan_id, topi_id) VALUES ($1, $2, $3)
+				ON CONFLICT (user_id, chan_id) DO UPDATE SET topi_id = EXCLUDED.topi_id`,
 				w.user, chanID, id); err != nil {
 				return fmt.Errorf("writing channel_topics: %w", err)
 			}
@@ -314,19 +314,20 @@ func (w *writer) all(p *plan, o Options) error {
 	}
 	var dev int32
 	if err := w.tx.QueryRow(w.ctx, `
-		INSERT INTO devices (dev_name) VALUES ($1)
-		ON CONFLICT (dev_name) DO UPDATE SET dev_name = EXCLUDED.dev_name
-		RETURNING dev_id`, o.DeviceName).Scan(&dev); err != nil {
+		INSERT INTO devices (devi_name) VALUES ($1)
+		ON CONFLICT (devi_name) DO UPDATE SET devi_name = EXCLUDED.devi_name
+		RETURNING devi_id`, o.DeviceName).Scan(&dev); err != nil {
 		return fmt.Errorf("writing devices: %w", err)
 	}
-	if err := w.exec("DELETE FROM device_videos WHERE dev_id = $1", dev); err != nil {
+	if err := w.exec("DELETE FROM device_videos WHERE devi_id = $1", dev); err != nil {
 		return err
 	}
 	return w.batch("device_videos", len(p.downloads), `
-		INSERT INTO device_videos (dev_id, vid_id, devvid_size_bytes, devvid_downloaded_at) VALUES ($1, $2, $3, $4)`,
+		INSERT INTO device_videos (devi_id, vid_id, dvvi_size_bytes, dvvi_downloaded_at, dvvi_audio_only)
+		VALUES ($1, $2, $3, $4, $5)`,
 		func(i int) []any {
 			d := p.downloads[i]
-			return []any{dev, d.VidID, d.Size, d.DownloadedAt}
+			return []any{dev, d.VidID, d.Size, d.DownloadedAt, d.AudioOnly}
 		})
 }
 
@@ -341,7 +342,7 @@ func (w *writer) rules(p *plan) error {
 	for _, chanID := range chans {
 		r := p.rules[chanID]
 		if err := w.exec(`
-			INSERT INTO toggl_channel_rules (user_id, chan_id, tgrule_entry_name, tgrule_project, tgrule_created_at)
+			INSERT INTO toggl_channel_rules (user_id, chan_id, tcru_entry_name, tcru_project, tcru_created_at)
 			VALUES ($1, $2, $3, $4, $5)`, w.user, chanID, r.Name, r.Project, r.CreatedAt); err != nil {
 			return fmt.Errorf("writing toggl_channel_rules: %w", err)
 		}

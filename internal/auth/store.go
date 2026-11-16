@@ -59,7 +59,7 @@ func (s *Store) now() time.Time {
 	return time.Now()
 }
 
-const userCols = `user_id, user_name, user_display_name, user_role, user_password_hash IS NOT NULL, user_created_at`
+const userCols = `user_id, user_name, user_display_name, usro_code, user_password_hash IS NOT NULL, user_created_at`
 
 func scanUser(row pgx.Row) (*User, error) {
 	var u User
@@ -84,7 +84,7 @@ func (s *Store) CreateUser(ctx context.Context, name, display, password string, 
 		display = name
 	}
 	u, err := scanUser(s.Pool.QueryRow(ctx, `
-		INSERT INTO users (user_name, user_display_name, user_password_hash, user_role)
+		INSERT INTO users (user_name, user_display_name, user_password_hash, usro_code)
 		VALUES ($1, $2, $3, CASE WHEN $4 OR NOT EXISTS (SELECT 1 FROM users) THEN 'ADMIN' ELSE 'MEMBER' END)
 		RETURNING `+userCols, name, strings.TrimSpace(display), hash, admin))
 	var pgErr *pgconn.PgError
@@ -145,12 +145,12 @@ func (s *Store) SetRole(ctx context.Context, name string, admin bool) error {
 	}
 	return pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
 		// Lock the admins so two demotions can't race past the check.
-		if _, err := tx.Exec(ctx, `SELECT 1 FROM users WHERE user_role = 'ADMIN' FOR UPDATE`); err != nil {
+		if _, err := tx.Exec(ctx, `SELECT 1 FROM users WHERE usro_code = 'ADMIN' FOR UPDATE`); err != nil {
 			return err
 		}
 		tag, err := tx.Exec(ctx, `
-			UPDATE users SET user_role = $2 WHERE user_name = $1
-			AND ($2 = 'ADMIN' OR (SELECT count(*) FROM users WHERE user_role = 'ADMIN' AND user_name <> $1) > 0)`,
+			UPDATE users SET usro_code = $2 WHERE user_name = $1
+			AND ($2 = 'ADMIN' OR (SELECT count(*) FROM users WHERE usro_code = 'ADMIN' AND user_name <> $1) > 0)`,
 			strings.ToLower(strings.TrimSpace(name)), role)
 		if err != nil {
 			return err
@@ -169,7 +169,7 @@ func (s *Store) SetRole(ctx context.Context, name string, admin bool) error {
 func (s *Store) DeleteUser(ctx context.Context, name string) error {
 	return pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
 		var role string
-		err := tx.QueryRow(ctx, `SELECT user_role FROM users WHERE user_name = $1 FOR UPDATE`,
+		err := tx.QueryRow(ctx, `SELECT usro_code FROM users WHERE user_name = $1 FOR UPDATE`,
 			strings.ToLower(strings.TrimSpace(name))).Scan(&role)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return ErrNoSuchUser
@@ -179,7 +179,7 @@ func (s *Store) DeleteUser(ctx context.Context, name string) error {
 		}
 		if role == "ADMIN" {
 			var others int
-			if err := tx.QueryRow(ctx, `SELECT count(*) FROM users WHERE user_role = 'ADMIN' AND user_name <> $1`,
+			if err := tx.QueryRow(ctx, `SELECT count(*) FROM users WHERE usro_code = 'ADMIN' AND user_name <> $1`,
 				strings.ToLower(strings.TrimSpace(name))).Scan(&others); err != nil {
 				return err
 			}
@@ -267,7 +267,7 @@ func (s *Store) Session(ctx context.Context, token string) (u *User, renewed *ti
 	var expires time.Time
 	var usr User
 	err = s.Pool.QueryRow(ctx, `
-		SELECT u.user_id, u.user_name, u.user_display_name, u.user_role, u.user_password_hash IS NOT NULL,
+		SELECT u.user_id, u.user_name, u.user_display_name, u.usro_code, u.user_password_hash IS NOT NULL,
 		       u.user_created_at, s.sess_expires_at
 		FROM sessions s JOIN users u USING (user_id)
 		WHERE s.sess_id = $1 AND s.sess_expires_at > $2`, tokenHash(token), now).
