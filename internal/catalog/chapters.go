@@ -31,6 +31,9 @@ func (c *Catalog) Chapters(ctx context.Context, vid string) ([]ytdlp.Chapter, er
 	if err != nil {
 		return []ytdlp.Chapter{}, nil
 	}
+	if found == nil {
+		found = []ytdlp.Chapter{} // the page reads a list, never null
+	}
 	return found, c.SetChapters(ctx, vid, found)
 }
 
