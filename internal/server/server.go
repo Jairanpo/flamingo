@@ -11,25 +11,39 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/Jairanpo/yt/internal/auth"
 	"github.com/Jairanpo/yt/internal/config"
 	"github.com/Jairanpo/yt/internal/db"
 )
 
 type Server struct {
-	cfg  *config.Server
-	pool *pgxpool.Pool
-	mig  *db.Migrator
-	log  *slog.Logger
+	cfg     *config.Server
+	pool    *pgxpool.Pool
+	mig     *db.Migrator
+	log     *slog.Logger
+	auth    *auth.Store
+	limiter *auth.Limiter
 }
 
 func New(cfg *config.Server, pool *pgxpool.Pool, mig *db.Migrator, log *slog.Logger) *Server {
-	return &Server{cfg: cfg, pool: pool, mig: mig, log: log}
+	return &Server{
+		cfg: cfg, pool: pool, mig: mig, log: log,
+		auth:    &auth.Store{Pool: pool, SessionTTL: cfg.Auth.SessionTTL},
+		limiter: auth.NewLimiter(),
+	}
 }
 
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", s.healthz)
-	return mux
+	mux.Handle("GET /assets/", http.FileServerFS(webFS))
+	mux.HandleFunc("GET /login", s.loginForm)
+	mux.HandleFunc("POST /login", s.login)
+	mux.HandleFunc("POST /logout", s.logout)
+
+	mux.HandleFunc("GET /", s.requireUser(s.home))
+	mux.HandleFunc("GET /api/me", s.requireUser(s.me))
+	return securityHeaders(sameOrigin(mux))
 }
 
 // healthz answers 200 when the database is reachable, 503 when it is not.

@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/Jairanpo/yt/internal/config"
 	"github.com/Jairanpo/yt/internal/db"
@@ -50,7 +51,7 @@ func TestHealthzAgainstPostgres(t *testing.T) {
 		}
 	})
 
-	s := New(&config.Server{}, pool, mig, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	s := New(&config.Server{Auth: config.Auth{SessionTTL: time.Hour}}, pool, mig, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	ts := httptest.NewServer(s.Handler())
 	defer ts.Close()
 

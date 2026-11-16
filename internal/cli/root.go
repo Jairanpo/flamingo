@@ -42,7 +42,7 @@ func newRoot() *cobra.Command {
 		return config.LoadServer(path, explicit)
 	}
 
-	root.AddCommand(serveCmd(load), migrateCmd(load), importCmd(load), versionCmd())
+	root.AddCommand(serveCmd(load), migrateCmd(load), importCmd(load), userCmd(load), versionCmd())
 	return root
 }
 

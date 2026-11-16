@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sign in · yt</title>
+<link rel="stylesheet" href="/assets/auth.css">
+</head>
+<body>
+<main class="card">
+  <p class="brand">yt<span>·</span>library</p>
+  <p class="sub">Sign in to your library.</p>
+  <form method="post" action="/login">
+    <input type="hidden" name="next" value="{{.Next}}">
+    <label for="name">User name</label>
+    <input id="name" name="name" value="{{.Name}}" autocomplete="username" autocapitalize="none"
+           spellcheck="false" required {{if not .Name}}autofocus{{end}}>
+    <label for="password">Password</label>
+    <input id="password" name="password" type="password" autocomplete="current-password" required
+           {{if .Name}}autofocus{{end}}>
+    {{if .Error}}<p class="error" role="alert">{{.Error}}</p>{{end}}
+    <button type="submit">Sign in</button>
+  </form>
+</main>
+</body>
+</html>
