@@ -49,6 +49,30 @@ func SetTogglAccount(ctx context.Context, pool *pgxpool.Pool, box *secret.Box, u
 	if err != nil {
 		return err
 	}
+	return setToggl(ctx, pool, box, uid, token, workspace)
+}
+
+// SetMyToggl is SetTogglAccount for the signed-in user, from the page.
+func (l *Lib) SetMyToggl(ctx context.Context, box *secret.Box, token string, workspace int64) error {
+	return setToggl(ctx, l.Pool, box, l.User, token, workspace)
+}
+
+// TogglConnected says whether the user has a token stored, and for which
+// workspace (0: their default). The token itself never leaves the server.
+func (l *Lib) TogglConnected(ctx context.Context) (bool, int64, error) {
+	var wid *int64
+	err := l.Pool.QueryRow(ctx, `
+		SELECT toac_workspace_id FROM toggl_accounts WHERE user_id = $1`, l.User).Scan(&wid)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, 0, nil
+	}
+	if err != nil || wid == nil {
+		return err == nil, 0, err
+	}
+	return true, *wid, nil
+}
+
+func setToggl(ctx context.Context, pool *pgxpool.Pool, box *secret.Box, uid int32, token string, workspace int64) error {
 	token = strings.TrimSpace(token)
 	if token == "" {
 		_, err := pool.Exec(ctx, `DELETE FROM toggl_accounts WHERE user_id = $1`, uid)

@@ -151,4 +151,28 @@ func TestTogglAPI(t *testing.T) {
 	}
 	_, st = a.do("GET", "/api/toggl/status", nil)
 	eq(t, "disconnected", st["configured"], false)
+
+	// Each person sets their own token from the page.
+	_, st = a.do("GET", "/api/toggl/account", nil)
+	eq(t, "account before", []any{st["connected"], st["can_store"]}, []any{false, true})
+	code, st = a.do("PUT", "/api/toggl/account", map[string]any{"token": "wrong"})
+	if code != http.StatusBadGateway {
+		t.Errorf("a token Toggl refuses = %d %v", code, st)
+	}
+	code, _ = a.do("PUT", "/api/toggl/account", map[string]any{"token": "ana-token", "workspace": -1})
+	eq(t, "bad workspace", code, http.StatusBadRequest)
+	code, st = a.do("PUT", "/api/toggl/account", map[string]any{"token": " ana-token ", "workspace": "7"})
+	if code != 200 || st["connected"] != true || st["token"] != nil {
+		t.Fatalf("connect = %d %v", code, st)
+	}
+	_, st = a.do("GET", "/api/toggl/account", nil)
+	eq(t, "account after", []any{st["connected"], st["workspace"], st["token"]}, []any{true, 7.0, nil})
+	_, st = a.do("GET", "/api/toggl/status", nil)
+	eq(t, "timer back", st["configured"], true)
+	_, st = b.do("GET", "/api/toggl/account", nil)
+	eq(t, "bob untouched", st["connected"], false)
+	code, _ = a.do("DELETE", "/api/toggl/account", nil)
+	eq(t, "disconnect", code, 200)
+	_, st = a.do("GET", "/api/toggl/account", nil)
+	eq(t, "account gone", st["connected"], false)
 }

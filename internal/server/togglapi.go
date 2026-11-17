@@ -3,6 +3,7 @@ package server
 import (
 	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/Jairanpo/flamingo/internal/library"
 	"github.com/Jairanpo/flamingo/internal/toggl"
@@ -14,6 +15,76 @@ func (s *Server) routesToggl(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/toggl/status", s.requireUser(s.apiTogglStatus))
 	mux.HandleFunc("POST /api/toggl/start", s.requireUser(s.apiTogglStart))
 	mux.HandleFunc("POST /api/toggl/stop", s.requireUser(s.apiTogglStop))
+	mux.HandleFunc("GET /api/toggl/account", s.requireUser(s.apiTogglAccount))
+	mux.HandleFunc("PUT /api/toggl/account", s.requireUser(s.apiTogglConnect))
+	mux.HandleFunc("DELETE /api/toggl/account", s.requireUser(s.apiTogglDisconnect))
+}
+
+// apiTogglAccount says whether the signed-in person has connected Toggl.
+// The token never comes back: it can be replaced or removed, not read.
+func (s *Server) apiTogglAccount(w http.ResponseWriter, r *http.Request) {
+	l, err := s.lib(r)
+	if err != nil {
+		s.failErr(w, err)
+		return
+	}
+	on, wid, err := l.TogglConnected(r.Context())
+	if err != nil {
+		s.failErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"connected": on, "workspace": wid, "can_store": s.box != nil})
+}
+
+// apiTogglConnect stores the person's own API token, after Toggl has
+// confirmed it works.
+func (s *Server) apiTogglConnect(w http.ResponseWriter, r *http.Request) {
+	if s.box == nil {
+		fail(w, http.StatusConflict, "this server has no secret key, so it cannot keep Toggl tokens")
+		return
+	}
+	b := body(r)
+	tok := strings.TrimSpace(str(b, "token"))
+	if tok == "" || len(tok) > 200 {
+		fail(w, http.StatusBadRequest, "paste your Toggl API token")
+		return
+	}
+	var wid int64
+	if f, ok := num(b, "workspace"); ok {
+		if f < 0 || f != float64(int64(f)) {
+			fail(w, http.StatusBadRequest, "the workspace id is a whole number")
+			return
+		}
+		wid = int64(f)
+	}
+	l, err := s.lib(r)
+	if err != nil {
+		s.failErr(w, err)
+		return
+	}
+	if err := s.toggl.Check(r.Context(), toggl.Account{Token: tok, Workspace: wid}); err != nil {
+		s.togglFail(w, err)
+		return
+	}
+	if err := l.SetMyToggl(r.Context(), s.box, tok, wid); err != nil {
+		s.failErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"connected": true, "workspace": wid, "can_store": true})
+}
+
+func (s *Server) apiTogglDisconnect(w http.ResponseWriter, r *http.Request) {
+	l, err := s.lib(r)
+	if err != nil {
+		s.failErr(w, err)
+		return
+	}
+	if err := l.SetMyToggl(r.Context(), s.box, "", 0); err != nil {
+		s.failErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"connected": false, "workspace": 0, "can_store": s.box != nil})
 }
 
 // togglAccount is the signed-in user's account; ok is false (and the
@@ -21,7 +92,7 @@ func (s *Server) routesToggl(mux *http.ServeMux) {
 func (s *Server) togglAccount(w http.ResponseWriter, r *http.Request, l *library.Lib) (toggl.Account, bool) {
 	a, err := l.TogglAccount(r.Context(), s.box)
 	if errors.Is(err, library.ErrNoToggl) {
-		fail(w, http.StatusConflict, "Toggl is not connected for you — ask an admin to run `flamingo user toggl`")
+		fail(w, http.StatusConflict, "Toggl is not connected for you — add your API token in your account (your name, top right)")
 		return a, false
 	}
 	if err != nil {

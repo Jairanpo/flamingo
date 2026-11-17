@@ -4,17 +4,26 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Flamingo</title>
+<link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/assets/app.css">
 </head>
 <body data-device="{{.Device}}">
 <header>
+<div class="hrow top">
   <div class="brand">Flamingo<span>·</span></div>
   <input type="search" id="q" placeholder="Search titles and descriptions…" autocomplete="off">
+  <div class="me" title="{{.User.Name}}{{if .User.IsAdmin}} (admin){{end}}">
+    <button class="mebtn" id="mebtn" type="button" title="Your account and settings">
+      <span class="avatar" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16">
+        <circle cx="12" cy="8.2" r="4.2" fill="currentColor"/>
+        <path d="M3.8 21c.6-4.3 4-7 8.2-7s7.6 2.7 8.2 7z" fill="currentColor"/></svg></span>
+      <strong>{{.User.DisplayName}}</strong>
+    </button>
+    <form method="post" action="/logout"><button class="chip" type="submit">Sign out</button></form>
+  </div>
+</div>
+<div class="hrow tools">
   <button class="chip" id="sidebtn" title="Channels and playlists">☰</button>
-  <button class="who-src" id="whosrc" hidden></button>
-  <button class="chip" id="pin" hidden></button>
-  <button class="chip" id="shelve" hidden></button>
-  <button class="chip" id="forget" hidden>Forget</button>
   <select id="sort" title="Sort order (remembered per view)"></select>
   <div class="chips">
     <button class="chip" id="f-have"      aria-pressed="false">Downloaded</button>
@@ -27,14 +36,8 @@
           title="Track a channel or playlist">＋ source</button>
   <button class="chip" id="newcoll" title="New collection">＋ collection</button>
   <button class="chip" id="dlcfg" title="Where this computer keeps its downloads">⬇ folders</button>
-  <button class="chip" id="togglcfg"
-          title="How the open channel or playlist shows up in Toggl Track (or every channel, with none open)">⏱ toggl</button>
-  <div id="viewprog" hidden><span class="track"><i></i></span><span></span></div>
   <div class="stats" id="stats"></div>
-  <div class="me" title="{{.User.Name}}{{if .User.IsAdmin}} (admin){{end}}">
-    <strong>{{.User.DisplayName}}</strong>
-    <form method="post" action="/logout"><button class="chip" type="submit">Sign out</button></form>
-  </div>
+</div>
 </header>
 <div class="layout">
 <aside id="side">
@@ -45,6 +48,21 @@
 </aside>
 <main>
   <div id="dash" hidden></div>
+  <!-- The open view's own tools sit on top of its videos. -->
+  <div id="viewbar" hidden>
+    <div class="vbhead">
+      <h2 id="vbname"></h2>
+      <button class="who-src" id="whosrc" hidden></button>
+    </div>
+    <div id="viewprog" hidden><span class="track"><i></i></span><span></span></div>
+    <div class="vbtools">
+      <button class="vbtn pin" id="pin" hidden></button>
+      <button class="vbtn" id="togglcfg"
+              title="How this channel or playlist shows up in Toggl Track (every channel, from Everything)">⏱ Toggl</button>
+      <button class="vbtn quiet" id="shelve" hidden></button>
+      <button class="vbtn quiet" id="forget" hidden>Forget</button>
+    </div>
+  </div>
   <div class="grid" id="grid"></div>
   <div class="empty" id="empty" hidden></div>
 </main>
@@ -70,6 +88,37 @@
     <button class="act" id="madd">Create</button></div>
 </div></div>
 
+<div id="acctmodal" class="sheet"><div class="box wide">
+  <h3>Your account</h3>
+  <div class="acctwho">
+    <span class="avatar big" aria-hidden="true"><svg viewBox="0 0 24 24" width="26" height="26">
+      <circle cx="12" cy="8.2" r="4.2" fill="currentColor"/>
+      <path d="M3.8 21c.6-4.3 4-7 8.2-7s7.6 2.7 8.2 7z" fill="currentColor"/></svg></span>
+    <div><strong>{{.User.DisplayName}}</strong>
+      <div class="sub">@{{.User.Name}}{{if .User.IsAdmin}} · admin{{end}}</div></div>
+  </div>
+  <div class="dlsec">Toggl Track <span class="tgstate" id="tgstate"></span></div>
+  <div class="who hint" id="tgacct">Paste your API token from Toggl →
+    <em>Profile settings</em> → <em>API Token</em>. It is checked with Toggl,
+    stored locked, and never shown again — only replaced or removed.</div>
+  <form class="mk tgacct" id="tgform" autocomplete="off">
+    <!-- Not type=password: Chrome would offer, or quietly fill in, the
+         saved Flamingo sign-in here. The dots come from CSS instead. -->
+    <input id="tgtoken" type="text" placeholder="API token" name="toggl-api-token"
+           autocomplete="off" autocapitalize="off" spellcheck="false"
+           data-1p-ignore data-lpignore="true">
+    <input id="tgws" inputmode="numeric" placeholder="Workspace id (optional)"
+           autocomplete="off" spellcheck="false">
+    <button class="act get" id="tgsave">Connect</button>
+    <button type="button" class="act" id="tgclear" hidden>Disconnect</button>
+  </form>
+  <div class="err" id="tgerr" hidden></div>
+  <div class="bar2">
+    <form method="post" action="/logout" class="grow"><button class="act" type="submit">Sign out</button></form>
+    <button class="act" id="acctdone">Done</button>
+  </div>
+</div></div>
+
 <div id="tgmodal" class="sheet"><div class="box wide">
   <h3>Toggl Track <span class="count" id="tgscope"></span></h3>
   <div class="who hint">One row per channel: what to call it in Toggl, the
@@ -79,7 +128,7 @@
     Every entry is tagged <code>Youtube</code> and
     <code>Youtube:&lt;channel&gt;</code> on its own. A project has to exist in
     Toggl already — it will not be created for you. Needs your Toggl
-    account connected on the server; without it the timer button stays
+    account connected (your name, top right); without it the timer button stays
     away.</div>
   <div class="bar2">
     <input id="tgfilter" class="grow" placeholder="Filter channels…"
@@ -88,8 +137,8 @@
   </div>
   <div class="who hint bad" id="tgoff" hidden>
     Your Toggl account is not connected yet, so nothing here can start a
-    timer. Copy your API token (Toggl → Profile settings) and ask an admin
-    to run <code>flamingo user toggl &lt;you&gt;</code>.</div>
+    timer. Add your API token in <button class="link" id="tgtoacct">your account</button>
+    (your name, top right).</div>
   <div class="tgrows" id="tgrows"></div>
   <div class="bar2">
     <span class="count grow" id="tgnote"></span>

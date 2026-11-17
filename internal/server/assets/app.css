@@ -13,14 +13,19 @@
      headings only. Blush #FECEE9 and slate #545677 are the extras. */
   --bg:#000d1f; --panel:#06182f; --well:#0a1f3a; --edge:#545677;
   --ink:#f5efe6; --dim:#aba79f; --accent:#EB9FEF; --on-accent:#000d1f;
-  --blush:#FECEE9; --ok:#7fd4a8; --bad:#ff8a9a; --shadow:0 1px 3px rgba(0,0,0,.5);
+  --blush:#FECEE9; --slate:#545677; --slate-lo:rgba(84,86,119,.28);
+  --slate-hi:#6a6c94; --ok:#7fd4a8; --bad:#ff8a9a; --shadow:0 1px 3px rgba(0,0,0,.5);
   color-scheme: dark;
 }
 * { box-sizing:border-box; }
 body { margin:0; background:var(--bg); color:var(--ink); font:500 15.5px/1.5 "Nunito",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; }
 header { position:sticky; top:0; z-index:20; background:var(--bg);
          border-bottom:1px solid var(--edge); padding:12px 20px;
-         display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+         display:flex; flex-direction:column; gap:10px; }
+/* Two rows: who and where on top, what to show below. */
+.hrow { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+.hrow.top input[type=search] { max-width:640px; }
+.hrow.top .me { margin-left:auto; }
 .brand { font-weight:650; letter-spacing:-.01em; margin-right:4px; color:var(--accent); }
 .brand span { color:var(--accent); }
 input[type=search], select {
@@ -30,8 +35,8 @@ input[type=search] { flex:1; min-width:180px; }
 .chips { display:flex; gap:6px; }
 .chip { border:1px solid var(--edge); background:var(--panel); color:var(--dim);
         border-radius:999px; padding:5px 12px; font-size:13px; cursor:pointer; }
-.chip[aria-pressed=true] { background:var(--accent); border-color:var(--accent);
-                           color:var(--on-accent); }
+.chip[aria-pressed=true] { background:var(--slate); border-color:var(--blush);
+                           color:var(--blush); }
 /* Who the current view belongs to. A collapsed <select> shows only the
    option's own text, so the optgroup that carries the creator goes out of
    sight the moment you pick a playlist -- this keeps it on screen. */
@@ -57,8 +62,9 @@ main { padding:20px; flex:1; min-width:0; }
 #side .sitem { display:flex; gap:8px; align-items:baseline; width:100%;
               padding:3px 8px; border-radius:6px; color:var(--ink); }
 #side .sitem:hover, #side .sfold:hover { background:var(--panel); }
-#side .sitem.on { background:var(--accent); color:var(--on-accent); }
-#side .sitem.on .ct { color:var(--on-accent); }
+#side .sitem.on { background:var(--slate-lo); color:var(--blush);
+                  box-shadow:inset 3px 0 0 var(--accent); }
+#side .sitem.on .ct { color:var(--blush); }
 #side .nm { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis;
             white-space:nowrap; }
 #side .ct { color:var(--dim); font-size:11.5px; font-variant-numeric:tabular-nums; }
@@ -94,7 +100,7 @@ main { padding:20px; flex:1; min-width:0; }
          font-variant-numeric:tabular-nums; }
 .flag { position:absolute; left:6px; top:6px; background:rgba(0,0,0,.72);
         color:#fff; font-size:11px; padding:2px 7px; border-radius:4px; }
-.flag.have { background:var(--ok); }
+.flag.have { background:var(--blush); color:var(--on-accent); }
 .card.watched .thumbwrap img { opacity:.45; }
 .card.gone .thumbwrap { background:repeating-linear-gradient(45deg,
     #06182f, #06182f 8px, #0c2240 8px, #0c2240 16px); cursor:default; }
@@ -127,12 +133,15 @@ main { padding:20px; flex:1; min-width:0; }
 /* Icons take their own width; the main button gets what is left. */
 .row button.act.icon { flex:0 0 auto; width:24px; padding-left:0; padding-right:0; }
 .row button.act.primary { padding-left:6px; padding-right:6px; }
-button.act { flex:1; border:1px solid var(--edge); background:transparent;
+button.act { flex:1; border:1px solid transparent; background:var(--slate-lo);
              color:var(--ink); border-radius:6px; padding:5px 8px; font-size:12.5px;
              cursor:pointer; }
-button.act:hover { border-color:var(--accent); color:var(--accent); }
+button.act:hover { border-color:var(--blush); color:var(--blush); }
+button.act.get { background:var(--slate); color:var(--blush); font-weight:700; }
+button.act.get:hover { background:var(--slate-hi); border-color:var(--blush); }
 button.act.primary { background:var(--accent); border-color:var(--accent);
-                     color:var(--on-accent); }
+                     color:var(--on-accent); font-weight:700; }
+button.act.primary:hover { background:var(--blush); border-color:var(--blush); color:var(--on-accent); }
 button.act:disabled { opacity:.55; cursor:default; }
 .icon { flex:0 0 auto; width:30px; padding:5px 4px; }
 .empty { color:var(--dim); text-align:center; padding:64px 20px; }
@@ -334,7 +343,7 @@ body.hasfold #jobs { bottom:62px; }
                  border-radius:6px; padding:2px 9px; font:inherit; font-size:12.5px;
                  color:#d8d2c8; cursor:pointer; font-variant-numeric:tabular-nums; }
 #pspeed button:hover, #pquality button:hover { border-color:var(--accent); color:var(--accent); }
-#pspeed button.on, #pquality button.on { background:var(--accent); border-color:var(--accent); color:var(--on-accent); }
+#pspeed button.on, #pquality button.on { background:var(--slate); border-color:var(--blush); color:var(--blush); }
 /* Marks: ticks on a strip under the picture, and a list you can annotate. */
 #pmstrip { position:relative; max-width:1100px; width:100%; height:12px;
            margin:4px auto 0; flex-shrink:0; }
@@ -366,7 +375,7 @@ body.hasfold #jobs { bottom:62px; }
 #qmenu button { background:none; border:none; color:var(--ink); font:inherit;
                 font-size:13.5px; text-align:left; padding:5px 8px; border-radius:5px;
                 cursor:pointer; }
-#qmenu button:hover { background:var(--accent); color:var(--on-accent); }
+#qmenu button:hover { background:var(--slate); color:var(--blush); }
 #pdesc { max-height:20vh; overflow:auto; white-space:pre-wrap; margin-top:10px;
          font-size:13.5px; color:#d8d2c8; }
 /* The Toggl timer, when a token is configured. Without one the whole row
@@ -474,7 +483,7 @@ body.hasfold #jobs { bottom:62px; }
 #jobs .clearall:hover { color:var(--ink); }
 .job .d { color:var(--dim); font-variant-numeric:tabular-nums; }
 .job .track { height:3px; background:var(--edge); border-radius:2px; margin-top:6px; }
-.job .track i { display:block; height:100%; background:var(--accent);
+.job .track i { display:block; height:100%; background:var(--blush);
                 border-radius:2px; transition:width .3s; }
 .job.error { border-color:#a8412f; }
 .job.error .d { color:#d4705c; }
@@ -484,10 +493,24 @@ body.hasfold #jobs { bottom:62px; }
 .me { display:flex; align-items:center; gap:8px; white-space:nowrap;
       color:var(--dim); font-size:13px; }
 .me strong { color:var(--ink); font-weight:600; }
+/* Your name is a button: the round silhouette says "settings live here". */
+.mebtn { display:flex; align-items:center; gap:7px; background:var(--slate-lo);
+         border:1px solid transparent; border-radius:999px; padding:3px 12px 3px 3px;
+         font:inherit; color:inherit; cursor:pointer; }
+.mebtn:hover { border-color:var(--blush); }
+.mebtn:hover strong { color:var(--blush); }
+.avatar { display:inline-grid; place-items:center; width:26px; height:26px;
+          border-radius:50%; background:var(--slate); color:var(--blush);
+          box-shadow:0 0 0 2px var(--accent); overflow:hidden; }
+.avatar svg { margin-top:4px; }
+.avatar.big { width:46px; height:46px; }
+.acctwho { display:flex; gap:12px; align-items:center; margin:6px 0 14px; }
+.acctwho strong { font-size:16px; }
+.sheet .bar2 form { margin:0; }
 .me form { margin:0; }
 
 /* Titles: Outfit, bold and geometric. */
-.brand, .title, .pcard .pname, .pcard .phero .t, .dlvl, #pmeta h2, .sheet h3 { font-family:"Outfit","Nunito",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+.brand, .title, #vbname, .pcard .pname, .pcard .phero .t, .dlvl, #pmeta h2, .sheet h3 { font-family:"Outfit","Nunito",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
   letter-spacing:-.005em; }
 .brand { font-weight:700; font-size:17px; }
 .title { font-weight:600; }
@@ -500,3 +523,41 @@ body.hasfold #jobs { bottom:62px; }
 .sheet .dlrow .dlplat { width:72px; flex:0 0 auto; font-size:13.5px; }
 .sheet .mk input:disabled { opacity:.6; }
 #pstatus .act { margin-left:6px; }
+
+/* Toggl: your own account, above the channel rules. */
+.tgacct { flex-wrap:wrap; }
+#tgform[hidden], #tgclear[hidden] { display:none; }
+.tgacct #tgtoken { flex:2 1 220px; }
+.tgacct #tgws { flex:1 1 150px; }
+.tgacct button.act { flex:0 0 auto; padding-left:14px; padding-right:14px; }
+.tgstate { color:var(--dim); font-weight:600; }
+.tgstate.on { color:var(--ok); }
+
+/* Card ⋯ menu: Watch is the only button left on the card. */
+.row button.act.more { width:34px; font-size:16px; line-height:1; }
+#qmenu { min-width:220px; }
+#qmenu hr { border:0; border-top:1px solid var(--edge); margin:5px 2px; }
+#qmenu button.get { color:var(--blush); font-weight:700; }
+#qmenu button.bad { color:var(--bad); }
+#qmenu .qsizes { display:flex; flex-wrap:wrap; gap:4px; padding:0 6px 6px; }
+#qmenu .qsizes button { width:auto; padding:3px 8px; font-size:12px;
+                        background:var(--slate-lo); border-radius:999px; }
+
+/* The open view's bar: its name, progress and own tools, above its videos. */
+#viewbar { display:flex; flex-wrap:wrap; align-items:center; gap:10px 18px;
+           background:linear-gradient(135deg, var(--panel), #0d2342);
+           border:1px solid var(--slate); border-radius:14px;
+           padding:12px 16px; margin-bottom:18px; box-shadow:var(--shadow); }
+#viewbar[hidden] { display:none; }
+.vbhead { display:flex; flex-direction:column; min-width:0; flex:1 1 260px; }
+#vbname { margin:0; font-size:20px; font-weight:700; color:var(--accent);
+          line-height:1.25; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.vbtools { display:flex; flex-wrap:wrap; gap:8px; margin-left:auto; }
+.vbtn { border:1px solid var(--slate); background:var(--slate-lo); color:var(--ink);
+        border-radius:999px; padding:6px 14px; font:inherit; font-size:13.5px;
+        font-weight:700; cursor:pointer; }
+.vbtn:hover { border-color:var(--blush); color:var(--blush); }
+.vbtn:disabled { opacity:.5; cursor:default; }
+.vbtn.pin { background:var(--slate); color:var(--blush); border-color:var(--blush); }
+.vbtn.quiet { background:transparent; color:var(--dim); font-weight:600; }
+#tgtoken { -webkit-text-security:disc; text-security:disc; font-family:monospace; }

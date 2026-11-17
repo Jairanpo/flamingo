@@ -74,6 +74,7 @@ async function refresh(opts) {
   ].filter(Boolean).join(" · ");
   render(d.videos);
   paintDash();
+  paintViewbar();
   paintViewProgress();
   renderJobs(d.jobs);
 }
@@ -529,6 +530,19 @@ function pinCard(s, next, after) {
   return el;
 }
 
+// The bar over the videos: what you are looking at and what you can do
+// with it. Home has its own dashboard instead.
+function paintViewbar() {
+  const bar = $("#viewbar");
+  bar.hidden = isHome();
+  if (bar.hidden) return;
+  const src = state.source && state.sources.find(s => s.id === state.source);
+  const coll = !src && state.collection &&
+    state.collections.find(c => String(c.id) === String(state.collection));
+  $("#vbname").textContent = src ? `${glyph(src)} ${src.name}`
+                           : coll ? `✦ ${coll.name}` : "Everything";
+}
+
 function paintViewProgress() {
   const it = state.source ? state.sources.find(s => s.id === state.source)
            : state.collection ? state.collections.find(c => String(c.id) === String(state.collection))
@@ -628,92 +642,23 @@ function card(v, seq) {
     : [v.channel, fmtDate(v), v.have ? fmtSize(v.size) : null].filter(Boolean).join(" · ");
 
   const row = el.querySelector(".row");
+  // Watch is always the main button: it plays the file on disk when there
+  // is one and streams otherwise. Downloading is in the ⋯ menu.
   const main = document.createElement("button");
   main.className = "act primary";
-  main.textContent = v.have || !ON_DEVICE ? "Watch" : "Download";
-  main.onclick = () => v.have || !ON_DEVICE ? open_(v) : grab(v, main);
+  main.textContent = "▶ Watch";
+  main.title = v.have ? "Play the copy on this computer" : "Stream it — nothing is saved to disk";
+  main.onclick = () => open_(v);
   main.disabled = v.unavailable && !v.have;
   row.appendChild(main);
 
-  if (ON_DEVICE && !v.unavailable) {
-    const q = document.createElement("button");
-    q.className = "act icon"; q.textContent = "▾";
-    q.title = v.have ? "Download again at another quality" : "Download at a chosen quality";
-    q.onclick = e => { e.stopPropagation(); qualityMenu(v, q, main); };
-    row.appendChild(q);
-  }
+  // Everything else lives behind one ⋯ button, so the card stays calm.
+  const more = document.createElement("button");
+  more.className = "act icon more"; more.textContent = "⋯";
+  more.title = "More: download, star, watched, collections, hide";
+  more.onclick = e => { e.stopPropagation(); cardMenu(v, el, more); };
+  row.appendChild(more);
 
-  if (ON_DEVICE && !v.have && !v.unavailable) {
-    const play = document.createElement("button");
-    play.className = "act icon";
-    play.textContent = "▶";
-    play.title = "Stream it now — nothing is saved to disk";
-    play.onclick = () => open_(v);
-    row.appendChild(play);
-  }
-
-  const hide = document.createElement("button");
-  hide.className = "act icon";
-  hide.textContent = v.hidden ? "◉" : "⊘";
-  hide.title = v.hidden ? "Unhide — keep showing this one" : "Hide from every view";
-  hide.onclick = async () => {
-    const r = await post(`/api/hidden/${v.id}`);
-    v.hidden = r.hidden;
-    // Either way it no longer belongs in the list it is sitting in.
-    refresh();
-  };
-  row.appendChild(hide);
-
-  const star = document.createElement("button");
-  star.className = "act icon"; star.title = "Star";
-  star.textContent = v.starred ? "★" : "☆";
-  star.onclick = async () => { const r = await post(`/api/star/${v.id}`);
-                               v.starred = r.starred;
-                               star.textContent = r.starred ? "★" : "☆"; };
-  row.appendChild(star);
-
-  // The glyph is what the button will do, not what the video already is: a
-  // tick you press to tick something off. Undoing gets the same arrow the
-  // folded rows use, so one symbol never means both.
-  const seen = document.createElement("button");
-  seen.className = "act icon";
-  const paintSeen = () => {
-    seen.textContent = v.watched ? "↺" : "✓";
-    seen.title = v.watched ? "Put back in the queue — marks it not watched"
-                           : "Mark as watched";
-    el.classList.toggle("watched", !!v.watched);
-    el.querySelector(".flag.seen").hidden = !v.watched;
-  };
-  paintSeen();
-  seen.onclick = async () => {
-    const r = await post(`/api/watched/${v.id}`);
-    v.watched = r.watched;
-    bumpSeen(r.watched ? 1 : -1);
-    paintSeen();
-    // The Unwatched filter is showing a list this video may have just left.
-    if (state.unwatched) { refresh(); return; }
-    // Otherwise it sinks out of the grid and into the fold at the bottom.
-    if (!state.ordered) moveOut(el, "sinking");
-  };
-  row.appendChild(seen);
-
-  const plus = document.createElement("button");
-  plus.className = "act icon"; plus.title = "Add to a collection";
-  plus.textContent = "＋";
-  plus.onclick = () => openModal(v);
-  row.appendChild(plus);
-
-  if (v.have) {
-    const del = document.createElement("button");
-    del.className = "act icon"; del.title = "Delete file (keeps catalog entry)";
-    del.textContent = "✕";
-    del.onclick = async () => {
-      if (!confirm(`Delete the downloaded file for:\n\n${v.title}\n\n` +
-                   `The catalog entry stays, so you can re-download later.`)) return;
-      await post(`/api/remove/${v.id}`); refresh();
-    };
-    row.appendChild(del);
-  }
   // Looking costs nothing now: a click on something not on disk streams it.
   const openThumb = () => v.unavailable && !v.have ? null : open_(v);
   el.querySelector(".thumbwrap").onclick = openThumb;
@@ -723,7 +668,7 @@ function card(v, seq) {
 
 async function grab(v, btn, audio, height) {
   const label = btn.textContent;
-  btn.disabled = true; btn.textContent = "Queued…";
+  btn.disabled = true; btn.textContent = btn.classList.contains("icon") ? "…" : "Queued…";
   dismissed.delete(v.id);
   const body = {audio: !!audio, title: v.title};
   if (height != null) body.height = height;
@@ -736,32 +681,78 @@ async function grab(v, btn, audio, height) {
 // recordings, heavier to play on an old machine.
 const DL_QUALITIES = [["Best available", 0], ["4K (2160p)", 2160], ["1440p", 1440],
                       ["1080p", 1080], ["720p", 720], ["480p", 480]];
-function qualityMenu(v, anchor, mainBtn) {
+// The ⋯ menu on a card. Download sizes sit in one compact row; the rest
+// are plain lines. Each line says what it will do, not what the video is.
+function cardMenu(v, el, anchor) {
+  if ($("#qmenu")?.dataset.vid === v.id) { closeQualityMenu(); return; }
   closeQualityMenu();
   const m = document.createElement("div");
-  m.id = "qmenu";
-  const head = document.createElement("div");
-  head.className = "qh";
-  head.textContent = v.have ? "Download again at… (replaces the file)" : "Download at…";
-  m.appendChild(head);
-  for (const [label, h] of DL_QUALITIES) {
+  m.id = "qmenu"; m.dataset.vid = v.id;
+  const item = (label, title, fn, cls) => {
     const b = document.createElement("button");
-    b.textContent = label;
-    b.onclick = () => { closeQualityMenu(); grab(v, mainBtn, false, h); };
+    b.textContent = label; b.title = title || "";
+    if (cls) b.className = cls;
+    b.onclick = e => { e.stopPropagation(); closeQualityMenu(); fn(); };
     m.appendChild(b);
+    return b;
+  };
+  const head = text => {
+    const h = document.createElement("div");
+    h.className = "qh"; h.textContent = text; m.appendChild(h);
+  };
+
+  if (ON_DEVICE && !v.unavailable) {
+    if (!v.have) item("↓ Download", "Best quality up to this computer's limit",
+                      () => grab(v, anchor), "get");
+    head(v.have ? "Download again at… (replaces the file)" : "…or at a size");
+    const sizes = document.createElement("div");
+    sizes.className = "qsizes";
+    for (const [label, h] of DL_QUALITIES) {
+      const b = document.createElement("button");
+      b.textContent = label.replace(" available", "").replace(/ \(2160p\)/, "");
+      b.title = label;
+      b.onclick = e => { e.stopPropagation(); closeQualityMenu(); grab(v, anchor, false, h); };
+      sizes.appendChild(b);
+    }
+    m.appendChild(sizes);
+    if (!v.have) item("♪ Audio only (m4a)", "A fraction of the size", () => grab(v, anchor, true));
+    m.appendChild(document.createElement("hr"));
   }
-  if (!v.have) {
-    const b = document.createElement("button");
-    b.textContent = "♪ Audio only (m4a)";
-    b.title = "A fraction of the size";
-    b.onclick = () => { closeQualityMenu(); grab(v, mainBtn, true); };
-    m.appendChild(b);
-  }
+
+  item(v.starred ? "★ Unstar" : "☆ Star", "", async () => {
+    const r = await post(`/api/star/${v.id}`);
+    v.starred = r.starred;
+    refresh();
+  });
+  item(v.watched ? "↺ Put back in the queue" : "✓ Mark as watched", "", async () => {
+    const r = await post(`/api/watched/${v.id}`);
+    v.watched = r.watched;
+    bumpSeen(r.watched ? 1 : -1);
+    el.classList.toggle("watched", !!v.watched);
+    el.querySelector(".flag.seen").hidden = !v.watched;
+    // The Unwatched filter is showing a list this video may have just left.
+    if (state.unwatched) { refresh(); return; }
+    // Otherwise it sinks out of the grid and into the fold at the bottom.
+    if (!state.ordered) moveOut(el, "sinking");
+  });
+  item("＋ Add to a collection", "", () => openModal(v));
+  item(v.hidden ? "◉ Unhide" : "⊘ Hide from every view", "", async () => {
+    const r = await post(`/api/hidden/${v.id}`);
+    v.hidden = r.hidden;
+    // Either way it no longer belongs in the list it is sitting in.
+    refresh();
+  });
+  if (v.have) item("✕ Delete the file", "The catalog entry stays, so you can download it again", async () => {
+    if (!confirm(`Delete the downloaded file for:\n\n${v.title}\n\n` +
+                 `The catalog entry stays, so you can re-download later.`)) return;
+    await post(`/api/remove/${v.id}`); refresh();
+  }, "bad");
+
   document.body.appendChild(m);
   const r = anchor.getBoundingClientRect();
-  m.style.left = `${Math.min(r.left, innerWidth - m.offsetWidth - 8)}px`;
+  m.style.left = `${Math.max(8, Math.min(r.right - m.offsetWidth, innerWidth - m.offsetWidth - 8))}px`;
   m.style.top = r.bottom + m.offsetHeight + 8 > innerHeight
-    ? `${r.top - m.offsetHeight - 4}px` : `${r.bottom + 4}px`;
+    ? `${Math.max(8, r.top - m.offsetHeight - 4)}px` : `${r.bottom + 4}px`;
 }
 function closeQualityMenu() { $("#qmenu")?.remove(); }
 document.addEventListener("click", e => { if (!e.target.closest("#qmenu")) closeQualityMenu(); });
@@ -914,10 +905,10 @@ function fileMissing(v) {
   st.hidden = false;
   st.textContent = "This file is not in this computer's download folder any more. ";
   const again = document.createElement("button");
-  again.className = "act primary"; again.textContent = "Download again";
+  again.className = "act get"; again.textContent = "↓ Download again";
   again.onclick = () => grab({...v, have: false}, again);
   const stream = document.createElement("button");
-  stream.className = "act"; stream.textContent = "Stream it";
+  stream.className = "act primary"; stream.textContent = "▶ Stream it";
   stream.onclick = () => open_({...v, have: false});
   st.append(again, " ", stream);
   refresh();
@@ -1335,7 +1326,8 @@ $("#pvideo").addEventListener("ended", async () => {
 });
 document.addEventListener("keydown", e => {
   if (e.key !== "Escape") return;
-  if ($("#dlmodal").classList.contains("on")) closeDownloads();
+  if ($("#acctmodal").classList.contains("on")) closeAccount();
+  else if ($("#dlmodal").classList.contains("on")) closeDownloads();
   else if ($("#tgmodal").classList.contains("on")) closeToggl();
   else if ($("#srcmodal").classList.contains("on")) closeSrc();
   else if ($("#modal").classList.contains("on")) closeModal();
@@ -1427,6 +1419,57 @@ function openToggl() {
   $("#tgoff").hidden = tgReady;
   $("#tgmodal").classList.add("on");
 }
+
+/* ---- your account ----
+   Opened from your name in the header: who you are, and your own keys. */
+function openAccount() {
+  $("#tgtoken").value = ""; tgErr("");
+  $("#acctmodal").classList.add("on");
+  api("/api/toggl/account").then(paintTgAccount, e => tgErr(e.message));
+  $("#tgtoken").focus();
+}
+function closeAccount() { $("#acctmodal").classList.remove("on"); }
+$("#mebtn").onclick = openAccount;
+$("#acctdone").onclick = closeAccount;
+$("#acctmodal").onclick = e => { if (e.target.id === "acctmodal") closeAccount(); };
+$("#tgtoacct").onclick = () => { closeToggl(); openAccount(); };
+
+/* The person's own Toggl key. It goes in, never comes back out: the page
+   only learns whether one is stored. */
+function paintTgAccount(a) {
+  $("#tgstate").textContent = a.connected ? "· connected" : "· not connected";
+  $("#tgstate").className = "tgstate" + (a.connected ? " on" : "");
+  $("#tgws").value = a.workspace ? a.workspace : "";
+  $("#tgtoken").placeholder = a.connected ? "New API token (replaces the stored one)" : "API token";
+  $("#tgsave").textContent = a.connected ? "Replace" : "Connect";
+  $("#tgclear").hidden = !a.connected;
+  $("#tgform").hidden = !a.can_store;
+  if (!a.can_store) tgErr("This server has no secret key, so it cannot keep Toggl tokens. Ask an admin.");
+  tgReady = a.connected;
+  $("#tgoff").hidden = tgReady;
+}
+function tgErr(msg) { $("#tgerr").textContent = msg; $("#tgerr").hidden = !msg; }
+async function tgSend(method, payload) {
+  tgErr("");
+  $("#tgsave").disabled = $("#tgclear").disabled = true;
+  try {
+    const d = await api("/api/toggl/account", {method,
+      headers: {"Content-Type": "application/json"},
+      body: payload ? JSON.stringify(payload) : undefined});
+    $("#tgtoken").value = "";
+    paintTgAccount(d);
+    togglPoll();
+  } catch (e) { tgErr(e.message); }
+  finally { $("#tgsave").disabled = $("#tgclear").disabled = false; }
+}
+$("#tgform").onsubmit = e => {
+  e.preventDefault();
+  const token = $("#tgtoken").value.trim();
+  if (!token) { tgErr("Paste your Toggl API token first."); return; }
+  const ws = $("#tgws").value.trim();
+  tgSend("PUT", ws ? {token, workspace: ws} : {token});
+};
+$("#tgclear").onclick = () => tgSend("DELETE");
 function closeToggl() {
   $("#tgmodal").classList.remove("on");
   refresh(); togglPoll();

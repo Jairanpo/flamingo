@@ -46,6 +46,7 @@ func TestAssetsServed(t *testing.T) {
 		"/assets/app.css":            "--accent:#EB9FEF",
 		"/assets/auth.css":           "--accent:#EB9FEF",
 		"/assets/floor.svg":          "<svg",
+		"/assets/favicon.svg":        "<svg",
 		"/assets/fonts/outfit.woff2": "wOF2",
 		"/assets/fonts/nunito.woff2": "wOF2",
 	} {

@@ -62,13 +62,16 @@ changes and listings start failing, bump it and rebuild.
 
 ## Toggl Track
 
-Each person connects their own account; the token is sealed with
-`flamingo_key` before it is stored. Lose the key and everyone sets their
-token again.
+Each person connects their own account from the page: **your name (top right) → Toggl
+Track**, paste the API token (Toggl → Profile settings), optionally a
+workspace id. The server checks it with Toggl, seals it with
+`flamingo_key`, and never shows it again — it can only be replaced or
+removed. Lose the key and everyone sets their token again.
+
+An admin can do the same from the terminal:
 
 ```sh
-docker compose exec -it server flamingo user toggl jair -c /etc/flamingo/server.yaml
-# --workspace ID to file entries outside the default workspace, --clear to disconnect
+sudo scripts/set-toggl.sh jair        # --workspace ID, or --clear to disconnect
 ```
 
 ## Downloads: the agent on each computer

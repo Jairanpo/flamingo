@@ -109,7 +109,7 @@ func (c *Client) call(ctx context.Context, a Account, method, path string, body,
 	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
 	switch {
 	case resp.StatusCode == 401 || resp.StatusCode == 403:
-		return &Error{"Toggl rejected the token — set it again with `flamingo user toggl`"}
+		return &Error{"Toggl rejected the API token — paste it again in your account (your name, top right)"}
 	case resp.StatusCode >= 300:
 		detail := strings.TrimSpace(string(raw))
 		if len(detail) > 300 {
@@ -124,6 +124,15 @@ func (c *Client) call(ctx context.Context, a Account, method, path string, body,
 		return nil
 	}
 	return json.Unmarshal(raw, out)
+}
+
+// Check asks Toggl who the token belongs to, so a mistyped one is caught
+// when it is entered rather than on the first timer.
+func (c *Client) Check(ctx context.Context, a Account) error {
+	var me struct {
+		ID int64 `json:"id"`
+	}
+	return c.call(ctx, a, "GET", "/me", nil, &me)
 }
 
 // Workspace is the one to file entries under: the account's own, or the
@@ -146,7 +155,7 @@ func (c *Client) Workspace(ctx context.Context, a Account) (int64, error) {
 		return 0, err
 	}
 	if me.DefaultWorkspaceID == 0 {
-		return 0, &Error{"your Toggl account reports no default workspace; set one with `flamingo user toggl --workspace`"}
+		return 0, &Error{"your Toggl account reports no default workspace; enter a workspace id in your account (your name, top right)"}
 	}
 	c.mu.Lock()
 	tc.workspace = me.DefaultWorkspaceID
