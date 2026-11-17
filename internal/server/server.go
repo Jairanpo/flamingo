@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"mime"
 	"net/http"
 	"time"
 
@@ -19,6 +20,10 @@ import (
 	"github.com/Jairanpo/flamingo/internal/toggl"
 	"github.com/Jairanpo/flamingo/internal/ytdlp"
 )
+
+// Go's built-in type table lacks web fonts, and the slim container has no
+// system one to fall back on.
+func init() { _ = mime.AddExtensionType(".woff2", "font/woff2") }
 
 type Server struct {
 	cfg     *config.Server

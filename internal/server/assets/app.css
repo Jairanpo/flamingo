@@ -1,3 +1,12 @@
+/* Fonts are served from here (the CSP allows no other source). Outfit for
+   titles, Nunito for everything else; letters outside Latin fall through
+   to the system font. Both are variable: one file covers every weight. */
+@font-face { font-family:"Outfit"; font-style:normal; font-weight:500 800; font-display:swap;
+  src:url(/assets/fonts/outfit.woff2) format("woff2");
+  unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD; }
+@font-face { font-family:"Nunito"; font-style:normal; font-weight:400 800; font-display:swap;
+  src:url(/assets/fonts/nunito.woff2) format("woff2");
+  unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD; }
 :root {
   /* Flamingo palette, dark only. Navy base (deepened from #01162F), warm
      white text; flamingo pink #EB9FEF is for accents, highlights and
@@ -8,8 +17,7 @@
   color-scheme: dark;
 }
 * { box-sizing:border-box; }
-body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.5
-       ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; }
+body { margin:0; background:var(--bg); color:var(--ink); font:500 15.5px/1.5 "Nunito",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; }
 header { position:sticky; top:0; z-index:20; background:var(--bg);
          border-bottom:1px solid var(--edge); padding:12px 20px;
          display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
@@ -143,46 +151,36 @@ button.act:disabled { opacity:.55; cursor:default; }
 .dsub .count { color:var(--dim); }
 /* The dashboard sits on its own darker stage with a soft pattern, so it
    reads as the most important thing on the page. */
+/* Full bleed: it cancels main's 20px padding so the stage reaches the
+   sidebar and the header, and runs at least to the bottom of the window. */
 #dash { position:relative; isolation:isolate; overflow:hidden;
-        margin:-4px 0 8px; padding:22px; border-radius:16px;
-        background:#000817; border:1px solid #1b2240; }
-/* Depth: three layers at different distances. The pointer and the page's
-   scroll nudge each by its own amount (near moves most), and a grid floor
-   recedes to a horizon, so the stage reads as a space, not a flat panel. */
+        margin:-20px; padding:22px 20px 28px;
+        min-height:calc(100vh - var(--hh, 60px));
+        background:#000817; }
+/* Depth: three still layers at different distances and a grid floor that
+   recedes to a horizon, so the stage reads as a space, not a flat panel.
+   Nothing moves: a live 3D floor (even still) halved the page's frame rate,
+   so the floor is a picture, floor.svg, drawn in perspective. */
 #dash .depth { position:absolute; inset:0; z-index:-1; pointer-events:none;
-               overflow:hidden; perspective:700px; }
-#dash .dl { position:absolute; inset:-80px; will-change:transform;
-            transform:translate3d(calc(var(--mx,0)*var(--k)*1px),
-                                  calc((var(--my,0)*var(--k) - var(--sy,0)*var(--k)/40)*1px), 0); }
-#dash .far { --k:8;
+               overflow:hidden; }
+#dash .dl { position:absolute; inset:-80px; }
+#dash .far {
   background:
     radial-gradient(560px 280px at 88% 0%, rgba(235,159,239,.18), transparent 70%),
     radial-gradient(460px 320px at 0% 100%, rgba(254,206,233,.08), transparent 70%),
     radial-gradient(circle at 1px 1px, rgba(245,239,230,.10) 1px, transparent 1.6px) 0 0/22px 22px; }
-#dash .mid { --k:18; inset:auto -40% -80px; height:62%;
-  transform-origin:50% 0;
-  transform:translate3d(calc(var(--mx,0)*var(--k)*1px), calc(var(--my,0)*var(--k)*.5px), 0)
-            rotateX(68deg);
-  background:
-    linear-gradient(rgba(235,159,239,.28) 1.5px, transparent 1.5px) 0 0/64px 64px,
-    linear-gradient(90deg, rgba(235,159,239,.28) 1.5px, transparent 1.5px) 0 0/64px 64px;
-  -webkit-mask-image:linear-gradient(180deg, transparent, #000 45%);
-          mask-image:linear-gradient(180deg, transparent, #000 45%);
-  animation:dash-floor 6s linear infinite; }
-@keyframes dash-floor { to { background-position:0 64px, 0 64px; } }
+#dash .mid { inset:auto 0 0 0; height:55%;
+  background:url(/assets/floor.svg) center bottom/100% 100% no-repeat; }
 /* The horizon line where the floor meets the sky. */
-#dash .mid::before { content:""; position:absolute; left:0; right:0; top:0; height:2px;
+#dash .mid::before { content:""; position:absolute; z-index:1; left:0; right:0; top:0; height:2px;
   background:linear-gradient(90deg, transparent, rgba(254,206,233,.5), transparent); }
-#dash .near { --k:34;
+#dash .near {
   background:
     radial-gradient(90px 90px at 12% 28%, rgba(235,159,239,.20), transparent 70%),
     radial-gradient(140px 140px at 78% 62%, rgba(254,206,233,.10), transparent 70%),
-    radial-gradient(60px 60px at 52% 14%, rgba(84,86,119,.45), transparent 70%);
-  filter:blur(2px); }
-@media (prefers-reduced-motion:reduce) {
-  #dash .dl { transform:none; } #dash .mid { animation:none; transform:rotateX(68deg); }
-}
-#dash .dhead { background:rgba(6,24,47,.75); backdrop-filter:blur(4px); }
+    radial-gradient(60px 60px at 52% 14%, rgba(84,86,119,.45), transparent 70%); }
+/* No backdrop blur: it would be redone on every scroll frame. */
+#dash .dhead { background:rgba(6,24,47,.92); }
 .dgrid { display:grid; gap:20px;
          grid-template-columns:repeat(auto-fill, minmax(360px, 1fr)); }
 .pcard { background:linear-gradient(180deg, rgba(10,31,58,.92), rgba(6,24,47,.92));
@@ -487,3 +485,10 @@ body.hasfold #jobs { bottom:62px; }
       color:var(--dim); font-size:13px; }
 .me strong { color:var(--ink); font-weight:600; }
 .me form { margin:0; }
+
+/* Titles: Outfit, bold and geometric. */
+.brand, .title, .pcard .pname, .pcard .phero .t, .dlvl, #pmeta h2, .sheet h3 { font-family:"Outfit","Nunito",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+  letter-spacing:-.005em; }
+.brand { font-weight:700; font-size:17px; }
+.title { font-weight:600; }
+#pmeta h2 { font-weight:700; font-size:18px; }

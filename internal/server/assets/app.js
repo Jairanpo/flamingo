@@ -471,29 +471,6 @@ function paintDash() {
   }
 }
 
-// Parallax for the dashboard stage: the pointer's place over it (-1..1)
-// and the page scroll become CSS variables the depth layers move by.
-(() => {
-  if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-  const box = $("#dash");
-  let frame = 0, mx = 0, my = 0;
-  const paint = () => {
-    frame = 0;
-    box.style.setProperty("--mx", mx.toFixed(3));
-    box.style.setProperty("--my", my.toFixed(3));
-    box.style.setProperty("--sy", String(Math.round(scrollY)));
-  };
-  const soon = () => { if (!frame) frame = requestAnimationFrame(paint); };
-  box.addEventListener("pointermove", e => {
-    const r = box.getBoundingClientRect();
-    mx = ((e.clientX - r.left) / r.width) * 2 - 1;
-    my = ((e.clientY - r.top) / r.height) * 2 - 1;
-    soon();
-  });
-  box.addEventListener("pointerleave", () => { mx = my = 0; soon(); });
-  addEventListener("scroll", soon, {passive: true});
-})();
-
 function pinCard(s, next, after) {
   const el = document.createElement("div");
   el.className = "pcard";

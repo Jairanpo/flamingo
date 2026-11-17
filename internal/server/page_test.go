@@ -42,15 +42,21 @@ func TestAssetsServed(t *testing.T) {
 	s := bare(t)
 	h := s.Handler()
 	for path, want := range map[string]string{
-		"/assets/app.js":   "ON_DEVICE",
-		"/assets/app.css":  "--accent:#EB9FEF",
-		"/assets/auth.css": "--accent:#EB9FEF",
+		"/assets/app.js":             "ON_DEVICE",
+		"/assets/app.css":            "--accent:#EB9FEF",
+		"/assets/auth.css":           "--accent:#EB9FEF",
+		"/assets/floor.svg":          "<svg",
+		"/assets/fonts/outfit.woff2": "wOF2",
+		"/assets/fonts/nunito.woff2": "wOF2",
 	} {
 		w := httptest.NewRecorder()
 		h.ServeHTTP(w, httptest.NewRequest("GET", path, nil))
 		body, _ := io.ReadAll(w.Body)
 		if w.Code != 200 || !strings.Contains(string(body), want) {
 			t.Errorf("%s = %d, lacks %q", path, w.Code, want)
+		}
+		if strings.HasSuffix(path, ".woff2") && w.Header().Get("Content-Type") != "font/woff2" {
+			t.Errorf("%s type = %s", path, w.Header().Get("Content-Type"))
 		}
 		if csp := w.Header().Get("Content-Security-Policy"); !strings.Contains(csp, "script-src 'self'") ||
 			!strings.Contains(csp, "media-src 'self' blob:") {

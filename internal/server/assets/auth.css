@@ -1,3 +1,12 @@
+/* Fonts are served from here (the CSP allows no other source). Outfit for
+   titles, Nunito for everything else; letters outside Latin fall through
+   to the system font. Both are variable: one file covers every weight. */
+@font-face { font-family:"Outfit"; font-style:normal; font-weight:500 800; font-display:swap;
+  src:url(/assets/fonts/outfit.woff2) format("woff2");
+  unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD; }
+@font-face { font-family:"Nunito"; font-style:normal; font-weight:400 800; font-display:swap;
+  src:url(/assets/fonts/nunito.woff2) format("woff2");
+  unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD; }
 :root {
   /* Flamingo palette (see app.css): deep navy, warm white text, pink accents. */
   --bg:#000d1f; --panel:#06182f; --edge:#545677; --ink:#f5efe6; --dim:#aba79f;
@@ -7,7 +16,7 @@
 * { box-sizing:border-box; }
 body { margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center; padding:16px;
        background:var(--bg); color:var(--ink);
-       font:15px/1.5 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; }
+       font:500 15.5px/1.5 "Nunito",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; }
 .card { width:100%; max-width:340px; background:var(--panel); border:1px solid var(--edge);
         border-radius:12px; padding:28px 24px; box-shadow:var(--shadow); }
 .brand { font-weight:650; letter-spacing:-.01em; font-size:20px; margin:0 0 4px; color:var(--accent); }
@@ -21,3 +30,8 @@ button { margin-top:20px; width:100%; background:var(--accent); color:var(--on-a
          border-radius:7px; padding:10px; font:inherit; font-weight:600; cursor:pointer; }
 button.quiet { background:transparent; color:var(--dim); border:1px solid var(--edge); font-weight:500; }
 .error { color:var(--bad); font-size:14px; margin:12px 0 0; }
+
+/* Titles: Outfit, bold and geometric. */
+.brand { font-family:"Outfit","Nunito",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+  letter-spacing:-.005em; }
+.brand { font-weight:700; }
