@@ -10,8 +10,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/jackc/pgx/v5"
-
 	"github.com/Jairanpo/flamingo/internal/library"
 )
 
@@ -20,17 +18,14 @@ import (
 
 var vidRE = regexp.MustCompile(`^[A-Za-z0-9_-]{11}$`)
 
-// deviceHeader names the computer a request comes through. The agent sets
-// it (phase 6); without it nothing counts as downloaded.
-const deviceHeader = "X-Flamingo-Device"
-
 func (s *Server) lib(r *http.Request) (*library.Lib, error) {
 	l := &library.Lib{Pool: s.pool, User: CurrentUser(r).ID}
-	if name := strings.TrimSpace(r.Header.Get(deviceHeader)); name != "" {
-		err := s.pool.QueryRow(r.Context(), `SELECT devi_id FROM devices WHERE devi_name = $1`, name).Scan(&l.Device)
-		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
-			return nil, err
-		}
+	d, err := s.deviceOf(r)
+	if err != nil {
+		return nil, err
+	}
+	if d != nil {
+		l.Device = d.ID
 	}
 	return l, nil
 }

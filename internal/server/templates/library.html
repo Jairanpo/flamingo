@@ -26,6 +26,7 @@
   <button class="chip" id="newsrc"
           title="Track a channel or playlist">＋ source</button>
   <button class="chip" id="newcoll" title="New collection">＋ collection</button>
+  <button class="chip" id="dlcfg" title="Where this computer keeps its downloads">⬇ folders</button>
   <button class="chip" id="togglcfg"
           title="How the open channel or playlist shows up in Toggl Track (or every channel, with none open)">⏱ toggl</button>
   <div id="viewprog" hidden><span class="track"><i></i></span><span></span></div>
@@ -94,6 +95,21 @@
     <span class="count grow" id="tgnote"></span>
     <button class="act" id="tgdone">Done</button>
   </div>
+</div></div>
+
+<div id="dlmodal" class="sheet"><div class="box wide">
+  <h3>Downloads</h3>
+  <div class="who hint" id="dlhint"></div>
+  <div id="dlthis" hidden>
+    <div class="dlsec">This computer · <span id="dlname"></span></div>
+    <div class="mk"><input id="dldir" spellcheck="false" autocomplete="off">
+      <button class="act primary" id="dlsave">Save</button></div>
+    <div class="who hint" id="dlnote"></div>
+  </div>
+  <div class="dlsec">Default folder for each system</div>
+  <div id="dlplats"></div>
+  <div class="err" id="dlerr" hidden></div>
+  <div class="bar2"><span class="grow"></span><button class="act" id="dldone">Done</button></div>
 </div></div>
 
 <div id="srcmodal" class="sheet"><div class="box">

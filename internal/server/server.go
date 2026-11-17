@@ -86,6 +86,7 @@ func (s *Server) Handler() http.Handler {
 	s.routesSources(mux)
 	s.routesMedia(mux)
 	s.routesToggl(mux)
+	s.routesDevices(mux)
 	return securityHeaders(sameOrigin(mux))
 }
 

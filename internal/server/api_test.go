@@ -32,7 +32,7 @@ func seed(t *testing.T, pool *pgxpool.Pool) {
 		   ('` + tV2 + `', '` + tChan + `', 'Two', '2024-02-01', 0, 120),
 		   ('` + tV3 + `', NULL, 'Three', NULL, NULL, NULL)`,
 		`INSERT INTO playlist_videos (play_id, vid_id, plvi_position) VALUES ('` + tPl + `', '` + tV3 + `', 0), ('` + tPl + `', '` + tV2 + `', 1)`,
-		`INSERT INTO devices (devi_name) VALUES ('desk')`,
+		`INSERT INTO devices (devi_name, devi_token_hash) VALUES ('desk', sha256('desk-token'::bytea))`,
 		`INSERT INTO device_videos (devi_id, vid_id, dvvi_size_bytes, dvvi_downloaded_at) SELECT devi_id, '` + tV1 + `', 100, now() FROM devices`,
 	} {
 		if _, err := pool.Exec(context.Background(), q); err != nil {
@@ -42,13 +42,14 @@ func seed(t *testing.T, pool *pgxpool.Pool) {
 }
 
 type client struct {
-	t    *testing.T
-	base string
-	http *http.Client
+	t     *testing.T
+	base  string
+	http  *http.Client
+	token string // the device token an agent would add; "" for none
 }
 
 func signIn(t *testing.T, base, name string) *client {
-	c := &client{t: t, base: base, http: browser(t)}
+	c := &client{t: t, base: base, http: browser(t), token: "desk-token"}
 	r := post(t, c.http, base+"/login", url.Values{"name": {name}, "password": {"secret-pass"}}, "")
 	if r.StatusCode != http.StatusSeeOther {
 		t.Fatalf("sign in %s: %d", name, r.StatusCode)
@@ -66,7 +67,9 @@ func (c *client) do(method, path string, body any) (int, map[string]any) {
 		rd = bytes.NewReader(nil)
 	}
 	req, _ := http.NewRequest(method, c.base+path, rd)
-	req.Header.Set(deviceHeader, "desk")
+	if c.token != "" {
+		req.Header.Set(deviceHeader, c.token)
+	}
 	resp, err := c.http.Do(req)
 	if err != nil {
 		c.t.Fatal(err)

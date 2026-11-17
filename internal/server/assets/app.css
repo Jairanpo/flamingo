@@ -492,3 +492,11 @@ body.hasfold #jobs { bottom:62px; }
 .brand { font-weight:700; font-size:17px; }
 .title { font-weight:600; }
 #pmeta h2 { font-weight:700; font-size:18px; }
+
+/* Downloads sheet: one row per system, the name, its folder, Save. */
+.sheet .dlsec { color:var(--dim); font-size:11.5px; text-transform:uppercase;
+                letter-spacing:.06em; margin:16px 0 0; }
+.sheet .dlrow { align-items:center; margin-top:8px; }
+.sheet .dlrow .dlplat { width:72px; flex:0 0 auto; font-size:13.5px; }
+.sheet .mk input:disabled { opacity:.6; }
+#pstatus .act { margin-left:6px; }

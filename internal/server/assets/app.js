@@ -725,7 +725,7 @@ async function grab(v, btn, audio, height) {
   const label = btn.textContent;
   btn.disabled = true; btn.textContent = "Queued…";
   dismissed.delete(v.id);
-  const body = {audio: !!audio};
+  const body = {audio: !!audio, title: v.title};
   if (height != null) body.height = height;
   try { await post(`/api/get/${v.id}`, body); pollJobs(); }
   catch (e) { btn.disabled = false; btn.textContent = label; alert(e.message); }
@@ -788,7 +788,11 @@ function open_(v, from) {
   api(`/api/marks/${v.id}`).then(d => showMarks(d.marks, v.id)).catch(() => {});
   togglMount(v, from);
   $("#player").classList.add("on");
+  vid.onerror = null;
   if (v.have) {
+    // The file can be gone from the folder since the list was made: then
+    // say so and offer to fetch it again, or to stream it.
+    vid.onerror = () => { if (current?.id === v.id) fileMissing(v); };
     vid.src = `/media/${v.id}`;
     vid.currentTime = at;
     vid.play().catch(()=>{});
@@ -903,6 +907,21 @@ async function togglClick() {
    <video> through MediaSource. Every byte still goes through this server. */
 const AHEAD = 60, BEHIND = 30;
 let stream = null;
+
+function fileMissing(v) {
+  $("#pvideo").onerror = null;
+  const st = $("#pstatus");
+  st.hidden = false;
+  st.textContent = "This file is not in this computer's download folder any more. ";
+  const again = document.createElement("button");
+  again.className = "act primary"; again.textContent = "Download again";
+  again.onclick = () => grab({...v, have: false}, again);
+  const stream = document.createElement("button");
+  stream.className = "act"; stream.textContent = "Stream it";
+  stream.onclick = () => open_({...v, have: false});
+  st.append(again, " ", stream);
+  refresh();
+}
 
 function streamStatus(msg) {
   $("#pstatus").hidden = !msg;
@@ -1316,12 +1335,82 @@ $("#pvideo").addEventListener("ended", async () => {
 });
 document.addEventListener("keydown", e => {
   if (e.key !== "Escape") return;
-  if ($("#tgmodal").classList.contains("on")) closeToggl();
+  if ($("#dlmodal").classList.contains("on")) closeDownloads();
+  else if ($("#tgmodal").classList.contains("on")) closeToggl();
   else if ($("#srcmodal").classList.contains("on")) closeSrc();
   else if ($("#modal").classList.contains("on")) closeModal();
   else if ($("#player").classList.contains("on")) close_();
   else dismissAllJobs();
 });
+
+/* ---- downloads sheet ----
+   Each system (Linux, macOS, Windows) has one default folder, kept on the
+   server; a computer may use its own instead. The agent on each computer
+   reads the answer from there, and finds files by the [id] in their names. */
+function dlError(msg) { $("#dlerr").hidden = !msg; $("#dlerr").textContent = msg || ""; }
+function closeDownloads() { $("#dlmodal").classList.remove("on"); }
+
+async function openDownloads() {
+  dlError("");
+  let d;
+  try { d = await api("/api/downloads"); } catch (e) { alert(e.message); return; }
+  const dev = d.device;
+  $("#dlthis").hidden = !dev;
+  $("#dlhint").textContent = dev
+    ? "Files are found by the [video id] in their names, anywhere inside the " +
+      "folder. Point this computer somewhere else and it looks there instead: " +
+      "anything left in the old folder shows as not downloaded."
+    : "This page came straight from the server, so it can only stream. To " +
+      "download, open Flamingo through this computer's agent at " +
+      "http://127.0.0.1:8421 (set it up once with: flamingo agent pair).";
+  if (dev) {
+    const plat = d.platforms.find(p => p.code === dev.platform);
+    $("#dlname").textContent = dev.device + (plat ? ` (${plat.name})` : "");
+    $("#dldir").value = dev.own ? dev.media_dir : "";
+    $("#dldir").placeholder = plat ? `${plat.media_dir} — the ${plat.name} default` : dev.media_dir;
+    $("#dlnote").textContent = dev.own
+      ? "Its own folder. Empty it and save to go back to the default."
+      : "Using the default for its system. Type a folder to give it its own.";
+  }
+  const box = $("#dlplats");
+  box.replaceChildren();
+  for (const p of d.platforms) {
+    const row = document.createElement("div");
+    row.className = "mk dlrow";
+    row.innerHTML = `<span class="dlplat"></span><input spellcheck="false" autocomplete="off">
+      <button class="act">Save</button>`;
+    row.querySelector(".dlplat").textContent = p.name;
+    const inp = row.querySelector("input"), btn = row.querySelector("button");
+    inp.value = p.media_dir;
+    inp.disabled = btn.disabled = !d.admin;
+    if (!d.admin) btn.title = inp.title = "Only an admin can change the defaults";
+    btn.onclick = async () => {
+      dlError("");
+      btn.disabled = true;
+      try { await post("/api/downloads/platform", {code: p.code, media_dir: inp.value}); btn.textContent = "Saved"; }
+      catch (e) { dlError(e.message); }
+      finally { btn.disabled = false; setTimeout(() => btn.textContent = "Save", 1500); }
+      refresh();
+    };
+    box.appendChild(row);
+  }
+  $("#dlmodal").classList.add("on");
+}
+
+$("#dlsave").onclick = async () => {
+  dlError("");
+  const btn = $("#dlsave");
+  btn.disabled = true;
+  try {
+    await post("/api/downloads/device", {media_dir: $("#dldir").value});
+    await openDownloads();
+    refresh();
+  } catch (e) { dlError(e.message); }
+  finally { btn.disabled = false; }
+};
+$("#dlcfg").onclick = openDownloads;
+$("#dldone").onclick = closeDownloads;
+$("#dlmodal").onclick = e => { if (e.target.id === "dlmodal") closeDownloads(); };
 
 /* ---- toggl sheet ----
    With a channel or playlist open it shows just that creator's row, so

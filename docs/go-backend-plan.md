@@ -277,6 +277,22 @@ until the switch-over in phase 7.
      page sizes bars with style attributes), and streams play from `blob:`.
 6. **Agent.** Proxy, download queue (port of `jobs.py`), local media with
    byte ranges, buffering, inventory reports, pairing, systemd unit.
+   **Done (2026-11-17)**, with these choices:
+   - Download folders live in the database, not in each computer's YAML:
+     `platforms` holds one default per OS (Linux, macOS, Windows), editable
+     by an admin in the app; `devices.devi_media_dir` overrides it for one
+     computer. The agent asks the server on start and every 2 minutes, and
+     at once when a folder is changed in the app.
+   - No SQLite index: the agent scans its folder and finds each file by the
+     `[id]` in its name, then replaces `device_videos` with what it found.
+     A file deleted by hand drops off; `/media` of a missing file answers
+     404 and the player offers Download again or Stream.
+   - The device is known by its token (`X-Flamingo-Device-Token`, set only
+     by the agent; any copy from the browser is dropped), not by name.
+   - Pairing: `flamingo agent pair` posts user + password once and keeps
+     the token in `~/.config/flamingo/agent.token`.
+   - Download cards (video and sound-only) come from the agent and are
+     merged into `/api/jobs` with the server's.
 7. **Toggl layers + switch-over.** Per-user keys and settings screen,
    `toggl_rules` layering, playlist tag/name editing. Import your data
    for real, swap `ytlocal.service` for `flamingo-agent` plus Compose, and keep the

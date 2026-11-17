@@ -217,10 +217,19 @@ func (s *Server) home(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
+	// The page offers downloads only when it came through a paired agent.
+	d, err := s.deviceOf(r)
+	if err != nil {
+		s.log.Error("device lookup", "err", err)
+	}
+	name := ""
+	if d != nil {
+		name = d.Name
+	}
 	s.render(w, http.StatusOK, "library.html", struct {
 		User   *auth.User
 		Device string
-	}{CurrentUser(r), strings.TrimSpace(r.Header.Get(deviceHeader))})
+	}{CurrentUser(r), name})
 }
 
 func (s *Server) me(w http.ResponseWriter, r *http.Request) {

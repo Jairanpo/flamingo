@@ -71,6 +71,27 @@ docker compose exec -it server flamingo user toggl jair -c /etc/flamingo/server.
 # --workspace ID to file entries outside the default workspace, --clear to disconnect
 ```
 
+## Downloads: the agent on each computer
+
+The server never touches a computer's disk. Each computer that should keep
+downloads runs the **agent**: it shows the page at `http://127.0.0.1:8421`,
+passes calls on to the server, and downloads (video or sound only), keeps
+and plays the files. It needs `yt-dlp` and `ffmpeg` installed.
+
+Where files go is set in the app (⬇ folders): one default per system
+(Linux, macOS, Windows), and optionally a folder of this computer's own.
+Files are found by the `[video id]` in their names, anywhere in the folder.
+
+```sh
+go build -o ~/.local/bin/flamingo ./cmd/flamingo
+~/.local/bin/flamingo agent pair --server http://127.0.0.1:8430   # once
+scripts/install-agent.sh   # starts it now and at every login (no sudo)
+```
+
+On another computer, use the server's LAN address in `--server`. Pairing
+the same name again replaces its key. The agent's settings live in
+`~/.config/flamingo/agent.yaml`; logs: `journalctl --user -u flamingo-agent`.
+
 ## Tests
 
 `go test -p 1 ./...` runs everything. The database tests run only when
