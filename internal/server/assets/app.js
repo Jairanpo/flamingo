@@ -64,10 +64,14 @@ async function refresh(opts) {
   buildPicker(d.sources, d.collections);
   buildSorts(d.sorts, d.sort);
   const s = d.stats;
-  $("#stats").textContent =
-    `${s.have}/${s.total} on disk · ${fmtSize(s.bytes)} · ` +
-    `${s.channels} channels · ${s.playlists} playlists` +
-    (s.hidden ? ` · ${s.hidden} hidden` : "");
+  // Disk use only means something where downloads happen; empty parts drop
+  // out so no stray separators are left behind.
+  $("#stats").textContent = [
+    ON_DEVICE && `${s.have}/${s.total} on disk`,
+    ON_DEVICE && fmtSize(s.bytes),
+    `${s.channels} channels`, `${s.playlists} playlists`,
+    s.hidden && `${s.hidden} hidden`,
+  ].filter(Boolean).join(" · ");
   render(d.videos);
   paintDash();
   paintViewProgress();
@@ -447,6 +451,9 @@ function paintDash() {
   const n = state.pins.length;
   const lv = LEVELS[Math.min(n, LEVELS.length - 1)];
   box.innerHTML = `
+    <div class="depth" aria-hidden="true">
+      <div class="dl far"></div><div class="dl mid"></div><div class="dl near"></div>
+    </div>
     <div class="dhead" style="--lv:${lv.color}">
       <span class="dlvl${lv.hot ? " hot" : ""}"></span>
       <span class="dsub"><span class="say"></span>
@@ -460,20 +467,46 @@ function paintDash() {
   const grid = box.querySelector(".dgrid");
   for (const p of state.pins) {
     const s = state.sources.find(x => x.id === p.id);
-    if (s) grid.appendChild(pinCard(s, p.next));
+    if (s) grid.appendChild(pinCard(s, p.next, p.after));
   }
 }
 
-function pinCard(s, next) {
+// Parallax for the dashboard stage: the pointer's place over it (-1..1)
+// and the page scroll become CSS variables the depth layers move by.
+(() => {
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  const box = $("#dash");
+  let frame = 0, mx = 0, my = 0;
+  const paint = () => {
+    frame = 0;
+    box.style.setProperty("--mx", mx.toFixed(3));
+    box.style.setProperty("--my", my.toFixed(3));
+    box.style.setProperty("--sy", String(Math.round(scrollY)));
+  };
+  const soon = () => { if (!frame) frame = requestAnimationFrame(paint); };
+  box.addEventListener("pointermove", e => {
+    const r = box.getBoundingClientRect();
+    mx = ((e.clientX - r.left) / r.width) * 2 - 1;
+    my = ((e.clientY - r.top) / r.height) * 2 - 1;
+    soon();
+  });
+  box.addEventListener("pointerleave", () => { mx = my = 0; soon(); });
+  addEventListener("scroll", soon, {passive: true});
+})();
+
+function pinCard(s, next, after) {
   const el = document.createElement("div");
   el.className = "pcard";
   const left = Math.max(0, s.total - s.seen);
+  const pct = s.total ? Math.round(100 * s.seen / s.total) : 0;
   el.innerHTML = `
-    <div class="ptop"><button class="pname"></button>
-      <button class="link unpin" title="Take it off the dashboard">Unpin</button></div>
-    <div class="pwho"></div>
-    <div class="pbar"><i style="width:${s.total ? 100 * s.seen / s.total : 0}%"></i></div>
-    <div class="pcount">✓ ${s.seen} of ${s.total} watched${left ? ` · ${left} to go` : ""}</div>`;
+    <div class="ptop">
+      <div class="pid"><button class="pname"></button><div class="pwho"></div></div>
+      <div class="pring" style="--p:${pct}"><span>${pct}%</span></div>
+    </div>
+    <div class="pbar"><i style="width:${pct}%"></i></div>
+    <div class="pfoot"><span class="pcount">✓ ${s.seen} of ${s.total} watched${left ? ` · ${left} to go` : ""}</span>
+      <button class="link unpin" title="Take it off the dashboard">Unpin</button></div>`;
   el.querySelector(".pname").textContent =
     `${glyph(s)} ${s.kind === "channel" ? s.name + " — all videos" : s.name}`;
   el.querySelector(".pname").onclick = () => pick("s:" + s.id);
@@ -482,21 +515,39 @@ function pinCard(s, next) {
     await post("/api/pin", {source: s.id, value: false});
     refresh();
   };
+  const top = el.querySelector(".ptop");
   if (next) {
+    // The next video is the card's face: a big picture you can't miss.
     const b = document.createElement("button");
-    b.className = "pnext";
+    b.className = "phero";
     b.title = "Play the next one";
     b.innerHTML = `<img loading="lazy" src="/thumb/${next.id}" alt="">
-      <span><span class="k">Next up${next.duration ? " · " + fmtDur(next.duration) : ""}</span>
+      <span class="play" aria-hidden="true">▶</span>
+      <span class="cap"><span class="k">Next up${next.duration ? " · " + fmtDur(next.duration) : ""}</span>
       <span class="t"></span></span>`;
     b.querySelector(".t").textContent = next.title;
     b.onclick = () => open_(next, s.id);
-    el.appendChild(b);
+    top.after(b);
+    if (after && after.length) {
+      const q = document.createElement("div");
+      q.className = "pqueue";
+      q.innerHTML = `<div class="k">Then</div>`;
+      for (const v of after) {
+        const r = document.createElement("button");
+        r.className = "pq";
+        r.innerHTML = `<img loading="lazy" src="/thumb/${v.id}" alt="">
+          <span class="t"></span><span class="d">${v.duration ? fmtDur(v.duration) : ""}</span>`;
+        r.querySelector(".t").textContent = v.title;
+        r.onclick = () => open_(v, s.id);
+        q.appendChild(r);
+      }
+      el.querySelector(".pfoot").before(q);
+    }
   } else {
     const d = document.createElement("div");
     d.className = "pdone";
     d.textContent = "All watched — unpin it to make room for the next priority.";
-    el.appendChild(d);
+    top.after(d);
   }
   return el;
 }

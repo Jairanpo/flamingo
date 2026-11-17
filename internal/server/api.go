@@ -154,6 +154,8 @@ type sourceJSON struct {
 type pinJSON struct {
 	ID   string         `json:"id"`
 	Next *library.Video `json:"next"`
+	// After is a peek at what follows next, so the card shows the road ahead.
+	After []*library.Video `json:"after"`
 }
 
 func (s *Server) apiState(w http.ResponseWriter, r *http.Request) {
@@ -268,7 +270,8 @@ func (s *Server) apiState(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// The home dashboard: each pin with the next video to watch, oldest pin first.
+	// The home dashboard: each pin with the next video to watch and the three
+	// after it, oldest pin first.
 	var pinned []*library.Source
 	for _, src := range srcs {
 		if src.Pinned {
@@ -283,14 +286,14 @@ func (s *Server) apiState(w http.ResponseWriter, r *http.Request) {
 			s.failErr(w, err)
 			return
 		}
-		next, err := l.Videos(ctx, library.Query{Source: p.ID, Unwatched: true, Limit: 1, Sort: sort})
+		next, err := l.Videos(ctx, library.Query{Source: p.ID, Unwatched: true, Limit: 4, Sort: sort})
 		if err != nil {
 			s.failErr(w, err)
 			return
 		}
-		pj := pinJSON{ID: p.ID}
+		pj := pinJSON{ID: p.ID, After: []*library.Video{}}
 		if len(next) > 0 {
-			pj.Next = next[0]
+			pj.Next, pj.After = next[0], next[1:]
 		}
 		pins = append(pins, pj)
 	}
