@@ -64,3 +64,21 @@ func TestAssetsServed(t *testing.T) {
 		}
 	}
 }
+
+// A redeployed stylesheet must reach browsers that already hold the old one.
+func TestAssetsRevalidate(t *testing.T) {
+	h := bare(t).Handler()
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("GET", "/assets/app.css", nil))
+	tag := w.Header().Get("ETag")
+	if tag == "" || w.Header().Get("Cache-Control") != "no-cache" {
+		t.Fatalf("etag %q, cache-control %q", tag, w.Header().Get("Cache-Control"))
+	}
+	r := httptest.NewRequest("GET", "/assets/app.css", nil)
+	r.Header.Set("If-None-Match", tag)
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	if w.Code != 304 {
+		t.Errorf("unchanged asset = %d, want 304", w.Code)
+	}
+}

@@ -75,7 +75,7 @@ func (s *Server) WithSecrets(box *secret.Box) *Server {
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", s.healthz)
-	mux.Handle("GET /assets/", http.FileServerFS(webFS))
+	mux.Handle("GET /assets/", assetHandler())
 	mux.HandleFunc("GET /login", s.loginForm)
 	mux.HandleFunc("POST /login", s.login)
 	mux.HandleFunc("POST /logout", s.logout)
