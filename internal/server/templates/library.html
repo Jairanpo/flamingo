@@ -12,6 +12,12 @@
 <div class="hrow top">
   <div class="brand">Flamingo<span>·</span></div>
   <input type="search" id="q" placeholder="Search titles and descriptions…" autocomplete="off">
+  <!-- Always one click back to what you are working through. -->
+  <button class="cont" id="cont" type="button" hidden>
+    <span class="cplay" aria-hidden="true"><svg viewBox="0 0 24 24" width="13" height="13">
+      <path d="M7 4l13 8-13 8z" fill="currentColor"/></svg></span>
+    <span class="ctext"><span class="k">Continue</span><span class="t" id="contt"></span></span>
+  </button>
   <div class="me" title="{{.User.Name}}{{if .User.IsAdmin}} (admin){{end}}">
     <button class="mebtn" id="mebtn" type="button" title="Your account and settings">
       <span class="avatar" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16">
@@ -57,6 +63,7 @@
     <div id="viewprog" hidden><span class="track"><i></i></span><span></span></div>
     <div class="vbtools">
       <button class="vbtn pin" id="pin" hidden></button>
+      <button class="vbtn done" id="complete" hidden></button>
       <button class="vbtn" id="togglcfg"
               title="How this channel or playlist shows up in Toggl Track (every channel, from Everything)">⏱ Toggl</button>
       <button class="vbtn quiet" id="shelve" hidden></button>

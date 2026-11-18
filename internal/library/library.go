@@ -82,6 +82,8 @@ type Source struct {
 	Shelved           bool
 	Pinned            bool
 	PinnedAt          *int64
+	Completed         bool
+	CompletedAt       *int64
 	Sort              *string
 	Total, Have, Seen int
 	Topic             string
@@ -94,7 +96,8 @@ func (l *Lib) Sources(ctx context.Context) ([]*Source, error) {
 		       count(sv.vid_id)::int,
 		       count(dv.vid_id)::int,
 		       count(*) FILTER (WHERE uv.usvi_watched)::int,
-		       COALESCE(t.topi_name, '')
+		       COALESCE(t.topi_name, ''),
+		       extract(epoch FROM s.src_completed_at)::bigint
 		  FROM user_sources($1) s
 		  LEFT JOIN user_source_videos($1) sv ON sv.src_id = s.src_id
 		  LEFT JOIN device_videos dv ON dv.devi_id = $2 AND dv.vid_id = sv.vid_id
@@ -102,7 +105,7 @@ func (l *Lib) Sources(ctx context.Context) ([]*Source, error) {
 		  LEFT JOIN channel_topics ct ON ct.user_id = $1 AND ct.chan_id = s.chan_id
 		  LEFT JOIN topics t ON t.user_id = ct.user_id AND t.topi_id = ct.topi_id
 		 GROUP BY s.src_id, s.src_kind, s.src_section, s.src_title, s.chan_id, s.chan_name, s.chan_handle,
-		          s.src_shelved, s.src_pinned_at, s.sort_code, t.topi_name`, l.User, l.Device)
+		          s.src_shelved, s.src_pinned_at, s.sort_code, t.topi_name, s.src_completed_at`, l.User, l.Device)
 	if err != nil {
 		return nil, err
 	}
@@ -111,10 +114,11 @@ func (l *Lib) Sources(ctx context.Context) ([]*Source, error) {
 	for rows.Next() {
 		var s Source
 		if err := rows.Scan(&s.ID, &s.Kind, &s.Section, &s.Title, &s.ChanID, &s.ChanName, &s.Handle,
-			&s.Shelved, &s.PinnedAt, &s.Sort, &s.Total, &s.Have, &s.Seen, &s.Topic); err != nil {
+			&s.Shelved, &s.PinnedAt, &s.Sort, &s.Total, &s.Have, &s.Seen, &s.Topic, &s.CompletedAt); err != nil {
 			return nil, err
 		}
 		s.Pinned = s.PinnedAt != nil
+		s.Completed = s.CompletedAt != nil
 		out = append(out, &s)
 	}
 	return out, rows.Err()

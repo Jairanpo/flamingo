@@ -230,9 +230,24 @@ func (l *Lib) SetPinned(ctx context.Context, id string, value bool) error {
 			if _, err := l.SourceKind(ctx, id); err != nil {
 				return err
 			}
-			return badInput(fmt.Sprintf("%d pins already — finish and unpin one first", MaxPins))
+			return badInput(fmt.Sprintf("%d in Focus already — finish one first", MaxPins))
 		}
-		return l.updateSource(ctx, tx, id, prefix+`_pinned_at = COALESCE(`+prefix+`_pinned_at, now())`)
+		// Back to Focus from Completed: it is no longer finished.
+		return l.updateSource(ctx, tx, id, prefix+`_pinned_at = COALESCE(`+prefix+`_pinned_at, now()), `+
+			prefix+`_completed_at = NULL`)
+	})
+}
+
+// SetCompleted marks a source finished, which takes it off Focus, or
+// clears that mark. It stays completed however many videos arrive later.
+func (l *Lib) SetCompleted(ctx context.Context, id string, value bool) error {
+	_, _, prefix, _ := sourceTable(id)
+	return pgx.BeginFunc(ctx, l.Pool, func(tx pgx.Tx) error {
+		if !value {
+			return l.updateSource(ctx, tx, id, prefix+`_completed_at = NULL`)
+		}
+		return l.updateSource(ctx, tx, id, prefix+`_completed_at = COALESCE(`+prefix+`_completed_at, now()), `+
+			prefix+`_pinned_at = NULL`)
 	})
 }
 

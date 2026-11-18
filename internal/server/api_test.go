@@ -230,6 +230,40 @@ func TestLibraryAPI(t *testing.T) {
 		t.Errorf("sixth pin allowed: %d %v", code, r)
 	}
 
+	// Completing takes a source off Focus, frees its place and keeps the
+	// date; moving it back to Focus clears the date.
+	src := func(id string) map[string]any {
+		for _, x := range a.state("")["sources"].([]any) {
+			if m := x.(map[string]any); m["id"] == id {
+				return m
+			}
+		}
+		t.Fatalf("no source %s", id)
+		return nil
+	}
+	if code, r := a.do("POST", "/api/complete", map[string]any{"source": "PLx1"}); code != 200 {
+		t.Fatalf("complete: %d %v", code, r)
+	}
+	eq(t, "completed leaves focus", src("PLx1")["pinned"], false)
+	if src("PLx1")["completed"] == nil {
+		t.Error("completed has no date")
+	}
+	if code, r := a.do("POST", "/api/pin", map[string]any{"source": "PLx5"}); code != 200 {
+		t.Errorf("place freed by completing: %d %v", code, r)
+	}
+	a.do("POST", "/api/complete", map[string]any{"source": "PLx5"})
+	if code, r := a.do("POST", "/api/pin", map[string]any{"source": "PLx1"}); code != 200 {
+		t.Fatalf("back to focus: %d %v", code, r)
+	}
+	eq(t, "back in focus", src("PLx1")["pinned"], true)
+	eq(t, "no longer completed", src("PLx1")["completed"], nil)
+	a.do("POST", "/api/complete", map[string]any{"source": "PLx5", "value": false})
+	eq(t, "uncompleted goes to backlog", src("PLx5")["completed"], nil)
+	eq(t, "and not to focus", src("PLx5")["pinned"], false)
+	if code, _ := a.do("POST", "/api/complete", map[string]any{"source": "PLnope"}); code != 400 {
+		t.Errorf("complete unknown: %d", code)
+	}
+
 	// Shelving keeps a video out of Everything only if nothing unshelved lists it.
 	a.do("POST", "/api/shelve", map[string]any{"source": tPl})
 	// tV2 is also in the channel; tV3 only in the shelved course (being in a

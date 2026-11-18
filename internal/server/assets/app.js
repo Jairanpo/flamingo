@@ -74,6 +74,7 @@ async function refresh(opts) {
   ].filter(Boolean).join(" · ");
   render(d.videos);
   paintDash();
+  paintCont();
   paintViewbar();
   paintViewProgress();
   renderJobs(d.jobs);
@@ -82,6 +83,13 @@ async function refresh(opts) {
 // One mark per kind of source, the same ones `yt sources` prints.
 const GLYPHS = {channel:"▸", course:"◆", live:"●", playlist:"▤", picks:"✦"};
 const glyph = s => GLYPHS[s.kind === "channel" ? "channel" : s.section || "playlist"];
+// Focus's mark, a target; and the play triangle the Focus buttons share.
+const TARGET = `<svg class="ico" viewBox="0 0 24 24" width="16" height="16" fill="none"
+  stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/>
+  <circle cx="12" cy="12" r="3.5"/></svg>`;
+const PLAY = `<svg viewBox="0 0 24 24" width="1em" height="1em" aria-hidden="true">
+  <path d="M7 4l13 8-13 8z" fill="currentColor"/></svg>`;
+const fmtDay = t => new Date(t * 1000).toLocaleDateString(undefined, {month: "short", day: "numeric"});
 
 /* ---- sidebar: topics, then creators, then their channel and playlists ----
    A dropdown stops scaling past a dozen creators. Here every creator sits on
@@ -112,7 +120,7 @@ function buildPicker(sources, colls) {
   // would throw away what you were typing.
   if ($("#side .tedit")) return;
   const key = JSON.stringify([sources.map(s => [s.id, s.group, s.topic, s.section,
-                                                 s.creator, s.shelved, s.pinned,
+                                                 s.creator, s.shelved, s.pinned, s.completed,
                                                  s.seen, s.total]),
                               colls.map(c => [c.id, c.seen, c.total]),
                               sideFilter, [...sideOpen], state.source, state.collection,
@@ -125,6 +133,7 @@ function buildPicker(sources, colls) {
 function paintSide(sources, colls) {
   const tree = $("#sidetree");
   tree.replaceChildren();
+  let out = tree;                       // the section rows go into
   const q = sideFilter.toLowerCase();
   const hit = (...xs) => !q || xs.some(x => x && x.toLowerCase().includes(q));
   const el = (tag, cls, text) => {
@@ -158,18 +167,57 @@ function paintSide(sources, colls) {
     h.append(t, nm);
     if (n != null) h.append(el("span", "ct", n));
     if (extra && extra.tail) h.append(extra.tail);
-    tree.append(h);
+    if (extra && extra.cls) h.classList.add(extra.cls);
+    out.append(h);
     return open;
   };
 
-  // With pins, home is the priorities dashboard and Everything its own view.
-  if (state.pins.length) tree.append(row(`📌 Priorities · ${state.pins.length}`, "", {}, 0));
-  tree.append(row("Everything", state.pins.length ? "all" : "", {}, 0));
+  // Focus: what you are working through, first and never folded, in the
+  // order you added it. Its heading is the way home.
+  const rank = new Map(state.pins.map((p, i) => [p.id, i]));
+  const focus = sources.filter(s => s.pinned)
+    .sort((a, b) => (rank.get(a.id) ?? 99) - (rank.get(b.id) ?? 99));
+  if (focus.length) {
+    const box = el("section", "sfocus");
+    const h = el("button", "sfhead" + (activeId() === "" ? " on" : ""));
+    h.innerHTML = `${TARGET}<span class="nm">Focus</span>
+      <span class="ct">${focus.length} of ${state.maxPins}</span>`;
+    h.title = "Your Focus dashboard";
+    h.onclick = () => pick("");
+    box.append(h);
+    for (const s of focus) {
+      const done = s.total > 0 && s.seen >= s.total;
+      const pct = s.total ? Math.round(100 * s.seen / s.total) : 0;
+      const b = el("button", "sfitem" + (activeId() === "s:" + s.id ? " on" : "") + (done ? " done" : ""));
+      const top = el("span", "fl");
+      top.append(el("span", "nm", s.kind === "channel" ? `${s.name} — all videos` : s.name),
+                 el("span", "ct", done ? "Done ✓" : `${pct}%`));
+      const bar = el("span", "fbar"), fill = el("i");
+      fill.style.width = `${done ? 100 : pct}%`;
+      bar.append(fill);
+      b.append(top, bar);
+      b.title = `${s.name} — ${s.seen} of ${s.total} watched`;
+      b.onclick = () => pick("s:" + s.id);
+      box.append(b);
+    }
+    tree.append(box);
+  }
 
-  // Group live sources by creator (the server sends them already ordered),
-  // then creators by topic.
+  // Backlog: everything tracked that is waiting its turn.
+  const waiting = sources.filter(s => !s.shelved && !s.pinned && !s.completed);
+  const back = el("section", "sback");
+  const bh = el("div", "shead");
+  bh.append(el("span", "nm", "Backlog"), el("span", "ct", `${waiting.length} waiting`));
+  back.append(bh);
+  tree.append(back);
+  out = back;
+  // With a Focus, home is its dashboard and Everything its own view.
+  out.append(row("Everything", state.pins.length ? "all" : "", {}, 0));
+
+  // Group waiting sources by creator (the server sends them already
+  // ordered), then creators by topic.
   const creators = new Map();
-  for (const s of sources.filter(s => !s.shelved)) {
+  for (const s of waiting) {
     if (!creators.has(s.group))
       creators.set(s.group, {key: s.group, name: s.creator || "unknown creator",
                              handle: s.handle, topic: s.topic || NO_TOPIC, items: []});
@@ -206,11 +254,23 @@ function paintSide(sources, colls) {
         onName: chan ? () => pick("s:" + chan.id) : null});
       if (!open) continue;
       for (const s of c.items)
-        tree.append(row((s.pinned ? "📌 " : "") +
-                        (s.kind === "channel" ? `${glyph(s)} All videos` : `${glyph(s)} ${s.name}`),
-                        "s:" + s.id, s, depth + 1));
+        out.append(row(s.kind === "channel" ? `${glyph(s)} All videos` : `${glyph(s)} ${s.name}`,
+                       "s:" + s.id, s, depth + 1));
     }
   }
+  out = tree;
+
+  // Completed: finished, newest first, with the day you finished.
+  const finished = sources.filter(s => s.completed && hit(s.name, s.creator))
+    .sort((a, b) => b.completed - a.completed);
+  if (finished.length && fold("completed", "✓ Completed", finished.length, 0, {cls: "green"}))
+    for (const s of finished) {
+      const r = row(s.kind === "channel" ? `${glyph(s)} ${s.name}` : `${glyph(s)} ${s.name}`,
+                    "s:" + s.id, s, 1);
+      r.querySelector(".ct").textContent = fmtDay(s.completed);
+      r.title = `${s.name} — finished ${new Date(s.completed * 1000).toLocaleDateString()}`;
+      tree.append(r);
+    }
 
   const cs = colls.filter(c => hit(c.name));
   if (cs.length && fold("collections", "Collections", colls.length, 0))
@@ -221,7 +281,7 @@ function paintSide(sources, colls) {
       tree.append(row(s.kind === "channel" ? `${glyph(s)} ${s.name}`
                                            : `${glyph(s)} ${s.name} — ${s.creator || "?"}`,
                       "s:" + s.id, s, 1));
-  if (tree.children.length === 1 && q)
+  if (q && tree.querySelectorAll(".sitem").length <= 1)
     tree.append(el("div", "snone", "Nothing tracked matches."));
 }
 
@@ -310,14 +370,21 @@ $("#whosrc").onclick = () => {
 function paintShelve(sources) {
   const b = $("#shelve");
   const src = state.source && sources.find(s => s.id === state.source);
-  b.hidden = $("#forget").hidden = $("#pin").hidden = !src;
+  b.hidden = $("#forget").hidden = $("#pin").hidden = $("#complete").hidden = !src;
   if (!src) return;
   const pb = $("#pin"), full = !src.pinned && state.pins.length >= state.maxPins;
-  pb.textContent = src.pinned ? "📌 Unpin" : "📌 Pin";
+  pb.textContent = src.pinned ? "Remove from Focus"
+                 : src.completed ? "◎ Back to Focus" : "◎ Move to Focus";
+  pb.classList.toggle("quiet", src.pinned);
   pb.disabled = full;
-  pb.title = src.pinned ? "Take it off the home dashboard"
-           : full ? `${state.maxPins} pins already — finish and unpin one first`
-           : "Put it on the home dashboard as a current priority";
+  pb.title = src.pinned ? "Take it off your Focus; it goes back to the backlog"
+           : full ? `${state.maxPins} in Focus already — finish one first`
+           : "Put it on your Focus dashboard, the things you are working through now";
+  const cb = $("#complete");
+  cb.textContent = src.completed ? `✓ Completed ${fmtDay(src.completed)}` : "✓ Mark complete";
+  cb.classList.toggle("quiet", !src.pinned && !src.completed);
+  cb.title = src.completed ? "Finished. Press to undo and send it back to the backlog"
+           : "Finished with it: off your Focus and into Completed, with today's date";
   $("#forget").title = "Stop tracking it. Downloaded files, stars and " +
                        "collections stay; add it again any time.";
   b.textContent = src.shelved ? "Unshelve" : "Shelve";
@@ -336,6 +403,13 @@ $("#pin").onclick = async () => {
   const src = state.sources.find(s => s.id === state.source);
   if (!src) return;
   try { await post("/api/pin", {source: src.id, value: !src.pinned}); }
+  catch (e) { alert(e.message); }
+  refresh();
+};
+$("#complete").onclick = async () => {
+  const src = state.sources.find(s => s.id === state.source);
+  if (!src) return;
+  try { await post("/api/complete", {source: src.id, value: !src.completed}); }
   catch (e) { alert(e.message); }
   refresh();
 };
@@ -424,17 +498,17 @@ function render(vs) {
   paintFold();
 }
 
-/* ---- home: pinned priorities ----
+/* ---- home: your Focus ----
    A short list of what you are working through, in place of the whole
-   library. One pin is ideal; each one more is a little less focus. */
+   library. One is ideal; each one more is a little less focus. The words
+   guide, they don't scold. */
 const LEVELS = [
   null,
-  {word: "Focus",       color: "#22c55e", say: "One priority — the ideal amount."},
-  {word: "Optimal",     color: "#84cc16", say: "Two priorities — really good."},
-  {word: "Good",        color: "#c5d41f", say: "Three priorities — fine, but keep it here."},
-  {word: "Not optimal", color: "#f59e0b", say: "Four priorities — you're switching more than progressing. Finish one."},
-  {word: "Scattered attention", color: "#ef4444", hot: true,
-   say: "Five priorities — you're wasting time juggling. Finish something and unpin it now."},
+  "One thing on your desk — the ideal amount.",
+  "Two things on your desk — really good.",
+  "Three things on your desk — a good number. Keep it here.",
+  "Four things on your desk — finishing one will help the others.",
+  "Five things on your desk — that's the limit. Finish one before adding more.",
 ];
 const isHome = () => !state.source && !state.collection && !state.q && !state.all
   && state.have === null && !state.starred && !state.unwatched && !state.hidden
@@ -449,85 +523,137 @@ function paintDash() {
     state.sources.find(x => x.id === p.id))]);
   if (key === dashKey) return;
   dashKey = key;
-  const n = state.pins.length;
-  const lv = LEVELS[Math.min(n, LEVELS.length - 1)];
+  const n = state.pins.length, max = state.maxPins;
+  const items = state.pins.map(p => ({p, s: state.sources.find(x => x.id === p.id)}))
+                          .filter(x => x.s);
+  // The oldest Focus with something left to watch is the one to continue.
+  const hero = items.find(x => x.p.next);
+  let bars = "";
+  for (let i = 0; i < max; i++) bars += `<i class="${i < n ? (n >= 4 ? "on warm" : "on") : ""}"></i>`;
   box.innerHTML = `
     <div class="depth" aria-hidden="true">
       <div class="dl far"></div><div class="dl mid"></div><div class="dl near"></div>
     </div>
-    <div class="dhead" style="--lv:${lv.color}">
-      <span class="dlvl${lv.hot ? " hot" : ""}"></span>
-      <span class="dsub"><span class="say"></span>
-        <span class="count"> · ${n} of ${state.maxPins} pins</span></span>
+    <div class="fhead">
+      <div class="ftitle"><h1>Your Focus</h1><p class="say"></p></div>
+      <div class="fmeter" role="img" aria-label="${n} of ${max} Focus places used">${bars}</div>
       <button class="link" id="dall">All videos →</button>
     </div>
-    <div class="dgrid"></div>`;
-  box.querySelector(".dlvl").textContent = lv.word;
-  box.querySelector(".say").textContent = lv.say;
+    <div class="fbody"></div>`;
+  box.querySelector(".say").textContent = LEVELS[Math.min(n, LEVELS.length - 1)];
   $("#dall").onclick = () => pick("all");
-  const grid = box.querySelector(".dgrid");
-  for (const p of state.pins) {
-    const s = state.sources.find(x => x.id === p.id);
-    if (s) grid.appendChild(pinCard(s, p.next, p.after));
+  const body = box.querySelector(".fbody");
+  if (hero) body.append(heroCard(hero.s, hero.p));
+  const rest = items.filter(x => x !== hero);
+  if (rest.length) {
+    const g = document.createElement("div");
+    g.className = "fcards";
+    for (const x of rest) g.append(focusCard(x.s, x.p));
+    body.append(g);
   }
 }
 
-function pinCard(s, next, after) {
-  const el = document.createElement("div");
-  el.className = "pcard";
+const dropFocus = async s => { await post("/api/pin", {source: s.id, value: false}); refresh(); };
+const markDone = async s => { await post("/api/complete", {source: s.id, value: true}); refresh(); };
+const srcLabel = s => s.kind === "channel" ? `${s.name} — all videos` : s.name;
+
+// The one to continue: big, warm, and first.
+function heroCard(s, p) {
+  const v = p.next;
+  const el = document.createElement("section");
+  el.className = "fhero";
   const left = Math.max(0, s.total - s.seen);
   const pct = s.total ? Math.round(100 * s.seen / s.total) : 0;
   el.innerHTML = `
-    <div class="ptop">
-      <div class="pid"><button class="pname"></button><div class="pwho"></div></div>
-      <div class="pring" style="--p:${pct}"><span>${pct}%</span></div>
-    </div>
-    <div class="pbar"><i style="width:${pct}%"></i></div>
-    <div class="pfoot"><span class="pcount">✓ ${s.seen} of ${s.total} watched${left ? ` · ${left} to go` : ""}</span>
-      <button class="link unpin" title="Take it off the dashboard">Unpin</button></div>`;
-  el.querySelector(".pname").textContent =
-    `${glyph(s)} ${s.kind === "channel" ? s.name + " — all videos" : s.name}`;
-  el.querySelector(".pname").onclick = () => pick("s:" + s.id);
-  el.querySelector(".pwho").textContent = s.creator || "";
-  el.querySelector(".unpin").onclick = async () => {
-    await post("/api/pin", {source: s.id, value: false});
-    refresh();
-  };
-  const top = el.querySelector(".ptop");
-  if (next) {
-    // The next video is the card's face: a big picture you can't miss.
-    const b = document.createElement("button");
-    b.className = "phero";
-    b.title = "Play the next one";
-    b.innerHTML = `<img loading="lazy" src="/thumb/${next.id}" alt="">
-      <span class="play" aria-hidden="true">▶</span>
-      <span class="cap"><span class="k">Next up${next.duration ? " · " + fmtDur(next.duration) : ""}</span>
-      <span class="t"></span></span>`;
-    b.querySelector(".t").textContent = next.title;
-    b.onclick = () => open_(next, s.id);
-    top.after(b);
-    if (after && after.length) {
-      const q = document.createElement("div");
-      q.className = "pqueue";
-      q.innerHTML = `<div class="k">Then</div>`;
-      for (const v of after) {
-        const r = document.createElement("button");
-        r.className = "pq";
-        r.innerHTML = `<img loading="lazy" src="/thumb/${v.id}" alt="">
-          <span class="t"></span><span class="d">${v.duration ? fmtDur(v.duration) : ""}</span>`;
-        r.querySelector(".t").textContent = v.title;
-        r.onclick = () => open_(v, s.id);
-        q.appendChild(r);
-      }
-      el.querySelector(".pfoot").before(q);
+    <button class="fthumb" title="Play the next one">
+      <img loading="lazy" src="/thumb/${v.id}" alt="">
+      <span class="play">${PLAY}</span>
+      ${v.duration ? `<span class="dur">${fmtDur(v.duration)}</span>` : ""}
+    </button>
+    <div class="finfo">
+      <span class="k">Continue here</span>
+      <h2 class="t"></h2>
+      <button class="src" title="Open it"></button>
+      <div class="fprog"><span class="track"><i style="width:${pct}%"></i></span>
+        <span class="n">${s.seen} of ${s.total} watched${left ? ` · ${left} to go` : ""}</span></div>
+      <div class="facts">
+        <button class="fplay">${PLAY} Play next</button>
+        <button class="fopen">Open</button>
+        <button class="link fdrop" title="Take it off your Focus; it goes back to the backlog">Remove from Focus</button>
+      </div>
+    </div>`;
+  el.querySelector(".t").textContent = v.title;
+  el.querySelector(".src").textContent = `${glyph(s)} ${srcLabel(s)}`;
+  el.querySelector(".fthumb").onclick = el.querySelector(".fplay").onclick = () => open_(v, s.id);
+  el.querySelector(".src").onclick = el.querySelector(".fopen").onclick = () => pick("s:" + s.id);
+  el.querySelector(".fdrop").onclick = () => dropFocus(s);
+  if (p.after && p.after.length) {
+    const q = document.createElement("div");
+    q.className = "fthen";
+    q.innerHTML = `<span class="k2">Then</span>`;
+    for (const a of p.after) {
+      const r = document.createElement("button");
+      r.className = "fq";
+      r.innerHTML = `<span class="t"></span><span class="d">${a.duration ? fmtDur(a.duration) : ""}</span>`;
+      r.querySelector(".t").textContent = a.title;
+      r.onclick = () => open_(a, s.id);
+      q.append(r);
     }
-  } else {
-    const d = document.createElement("div");
-    d.className = "pdone";
-    d.textContent = "All watched — unpin it to make room for the next priority.";
-    top.after(d);
+    el.querySelector(".finfo").append(q);
   }
   return el;
+}
+
+// The others: smaller and cooler. One you have finished turns green and
+// offers to put itself away in Completed.
+function focusCard(s, p) {
+  const el = document.createElement("article");
+  const v = p.next;
+  const pct = s.total ? Math.round(100 * s.seen / s.total) : 0;
+  if (!v) {
+    el.className = "fcard done";
+    el.innerHTML = `
+      <div class="fthumb" aria-hidden="true"><svg viewBox="0 0 24 24" width="40" height="40" fill="none"
+        stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.7 2.7L16 9.8"/></svg></div>
+      <div class="fc">
+        <button class="nm"></button>
+        <span class="nx">All ${s.total} watched — nicely done.</span>
+        <span class="fbar"><i style="width:100%"></i></span>
+        <div class="facts"><button class="fdone">✓ Mark complete</button>
+          <button class="link fdrop" title="Take it off your Focus; it goes back to the backlog">Remove</button></div>
+      </div>`;
+    el.querySelector(".fdone").onclick = () => markDone(s);
+  } else {
+    el.className = "fcard";
+    el.innerHTML = `
+      <button class="fthumb" title="Play the next one">
+        <img loading="lazy" src="/thumb/${v.id}" alt=""><span class="play">${PLAY}</span></button>
+      <div class="fc">
+        <button class="nm"></button>
+        <span class="nx"></span>
+        <span class="fbar"><i style="width:${pct}%"></i></span>
+        <div class="facts"><span class="n">${s.seen} of ${s.total} · ${pct}%</span>
+          <button class="link fdrop" title="Take it off your Focus; it goes back to the backlog">Remove</button></div>
+      </div>`;
+    el.querySelector(".nx").textContent = `Next: ${v.title}${v.duration ? " · " + fmtDur(v.duration) : ""}`;
+    el.querySelector(".fthumb").onclick = () => open_(v, s.id);
+  }
+  el.querySelector(".nm").textContent = srcLabel(s);
+  el.querySelector(".nm").onclick = () => pick("s:" + s.id);
+  el.querySelector(".fdrop").onclick = () => dropFocus(s);
+  return el;
+}
+
+// The header's way back: the next video of the oldest Focus, from anywhere.
+function paintCont() {
+  const b = $("#cont");
+  const p = state.pins.find(p => p.next);
+  b.hidden = !p;
+  if (!p) return;
+  const s = state.sources.find(x => x.id === p.id);
+  $("#contt").textContent = p.next.title;
+  b.title = `Play the next one in ${s ? s.name : "your Focus"}`;
+  b.onclick = () => open_(p.next, p.id);
 }
 
 // The bar over the videos: what you are looking at and what you can do

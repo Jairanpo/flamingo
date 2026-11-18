@@ -121,6 +121,7 @@ func (s *Server) routesAPI(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/collections", s.requireUser(s.apiCreateCollection))
 	mux.HandleFunc("POST /api/shelve", s.requireUser(s.apiShelve))
 	mux.HandleFunc("POST /api/pin", s.requireUser(s.apiPin))
+	mux.HandleFunc("POST /api/complete", s.requireUser(s.apiComplete))
 	mux.HandleFunc("POST /api/forget", s.requireUser(s.apiForget))
 	mux.HandleFunc("POST /api/toggl", s.requireUser(s.apiToggl))
 	mux.HandleFunc("POST /api/topic", s.requireUser(s.apiTopic))
@@ -141,6 +142,7 @@ type sourceJSON struct {
 	TgChannel string  `json:"tgchannel"`
 	Shelved   bool    `json:"shelved"`
 	Pinned    bool    `json:"pinned"`
+	Completed *int64  `json:"completed"` // when it was finished, Unix seconds
 	Total     int     `json:"total"`
 	Have      int     `json:"have"`
 	Seen      int     `json:"seen"`
@@ -242,7 +244,7 @@ func (s *Server) apiState(w http.ResponseWriter, r *http.Request) {
 			sources = append(sources, sourceJSON{
 				ID: src.ID, Kind: src.Kind, Section: src.Section, Name: name,
 				Creator: g.Creator, Handle: src.Handle, Group: g.Key, Topic: src.Topic, Owner: owner,
-				TgChannel: tg, Shelved: src.Shelved, Pinned: src.Pinned,
+				TgChannel: tg, Shelved: src.Shelved, Pinned: src.Pinned, Completed: src.CompletedAt,
 				Total: src.Total, Have: src.Have, Seen: src.Seen,
 			})
 			if src.ID == q.Source && src.Kind == "playlist" {
@@ -423,6 +425,18 @@ func (s *Server) apiPin(w http.ResponseWriter, r *http.Request) {
 		if err := l.SetPinned(ctx, str(b, "source"), truthy(b, "value", true)); err != nil {
 			if errors.Is(err, library.ErrUnknownSource) {
 				// The Python server answered an unknown pin with 400.
+				return nil, inputErr("unknown source")
+			}
+			return nil, err
+		}
+		return map[string]any{"ok": true}, nil
+	})(w, r)
+}
+
+func (s *Server) apiComplete(w http.ResponseWriter, r *http.Request) {
+	s.withLib(func(ctx context.Context, l *library.Lib, b map[string]any) (any, error) {
+		if err := l.SetCompleted(ctx, str(b, "source"), truthy(b, "value", true)); err != nil {
+			if errors.Is(err, library.ErrUnknownSource) {
 				return nil, inputErr("unknown source")
 			}
 			return nil, err
