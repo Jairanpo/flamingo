@@ -1350,8 +1350,11 @@ function togglMount(v, from) {
   el.dataset.label = m.name || (src && src.kind !== "channel" && src.name) || chan;
   el.dataset.project = m.project || "";
   const seen = new Set();
+  // Spelled as the server sends them (library.TogglTag): lowercase, except
+  // Youtube and Youtube:<Channel>.
   el.dataset.tags = [...(m.tags || "").split(","), "Youtube", chan && `Youtube:${chan}`]
     .map(t => (t || "").trim())
+    .map(t => /^youtube$/i.test(t) ? "Youtube" : /^youtube:/i.test(t) ? "Youtube:" + t.slice(8) : t.toLowerCase())
     .filter(t => t && !seen.has(t.toLowerCase()) && seen.add(t.toLowerCase()))
     .join(", ");
   $("#psub").after(el);

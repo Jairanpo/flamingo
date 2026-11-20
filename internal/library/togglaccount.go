@@ -101,9 +101,24 @@ type TogglEntry struct {
 	Tags        []string
 }
 
+// TogglTag spells a tag the way Toggl gets it: lowercase, as ClickUp keeps
+// tags (Owl sends its own the same way), except YouTube's: "Youtube", and
+// "Youtube:<Channel>" with the channel keeping its capitals.
+func TogglTag(t string) string {
+	t = strings.TrimSpace(t)
+	low := strings.ToLower(t)
+	switch {
+	case low == "youtube":
+		return "Youtube"
+	case strings.HasPrefix(low, "youtube:"):
+		return "Youtube:" + t[len("youtube:"):]
+	}
+	return low
+}
+
 // TogglEntryFor works out a video's entry from the user's rules: tags are
-// the channel's own plus Youtube and Youtube:<Channel>, repeats in other
-// capitals dropped. A name set for the channel wins; left blank, a video
+// the channel's own plus Youtube and Youtube:<Channel>, spelled by TogglTag,
+// repeats dropped. A name set for the channel wins; left blank, a video
 // watched from a playlist is named after it, else after the channel.
 func (l *Lib) TogglEntryFor(ctx context.Context, vid, source string) (TogglEntry, error) {
 	v, err := l.Video(ctx, vid)
@@ -124,7 +139,7 @@ func (l *Lib) TogglEntryFor(ctx context.Context, vid, source string) (TogglEntry
 	var tags []string
 	seen := map[string]bool{}
 	for _, t := range append(strings.Split(rule.Tags, ","), "Youtube", "Youtube:"+ch) {
-		t = strings.TrimSpace(t)
+		t = TogglTag(t)
 		if t != "" && !seen[strings.ToLower(t)] {
 			seen[strings.ToLower(t)] = true
 			tags = append(tags, t)

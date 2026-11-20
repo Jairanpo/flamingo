@@ -279,10 +279,14 @@ class Handler(BaseHTTPRequestHandler):
                 # Every entry says which channel it came from, so a playlist's
                 # title can be the description without losing the creator,
                 # and is tagged Youtube for filtering all of it at once. Tags
-                # keep the capitals typed; a repeat in other capitals is dropped.
+                # go out lowercase, as ClickUp keeps them, except Youtube and
+                # Youtube:<Channel>; a repeat is dropped.
                 tags, seen = [], set()
                 for t in (m.get("tags") or "").split(",") + ["Youtube", f"Youtube:{chan}"]:
                     t = t.strip()
+                    low = t.lower()
+                    t = ("Youtube" if low == "youtube" else
+                         "Youtube:" + t[8:] if low.startswith("youtube:") else low)
                     if t and t.lower() not in seen:
                         seen.add(t.lower())
                         tags.append(t)

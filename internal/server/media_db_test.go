@@ -126,7 +126,7 @@ func TestTogglAPI(t *testing.T) {
 	code, st = a.do("POST", "/api/toggl/start", map[string]any{"video": tV2, "source": tPl})
 	eq(t, "start", []any{code, st["ok"], st["project_missing"]}, []any{200, true, nil})
 	eq(t, "sent", []any{started["description"], started["tags"], started["project_id"], started["workspace_id"]},
-		[]any{"Alpha Course", []string{"Study", "youtube", "Youtube:Alpha"}, 3, 7})
+		[]any{"Alpha Course", []string{"study", "Youtube", "Youtube:Alpha"}, 3, 7})
 	// From the channel: the channel's name.
 	a.do("POST", "/api/toggl/start", map[string]any{"video": tV1, "source": tChan})
 	eq(t, "channel entry", started["description"], "Alpha")

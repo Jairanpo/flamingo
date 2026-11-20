@@ -82,7 +82,7 @@ func sortFold(xs []string) {
 }
 
 // SetToggl saves one creator's rule, or drops it once it is all blank.
-// Tags keep the capitals they were typed with; repeats in other capitals go.
+// Tags are saved as Toggl will get them (TogglTag); repeats go.
 func (l *Lib) SetToggl(ctx context.Context, channel, name, project, tags string) error {
 	channel = strings.TrimSpace(channel)
 	if channel == "" {
@@ -92,7 +92,7 @@ func (l *Lib) SetToggl(ctx context.Context, channel, name, project, tags string)
 	var tagList []string
 	seen := map[string]bool{}
 	for _, t := range strings.Split(tags, ",") {
-		t = clip(t, 64)
+		t = TogglTag(clip(t, 64))
 		if t != "" && !seen[strings.ToLower(t)] {
 			seen[strings.ToLower(t)] = true
 			tagList = append(tagList, t)
