@@ -45,6 +45,23 @@ func TestChaptersAPI(t *testing.T) {
 
 	code, _ = a.do("GET", "/api/chapters/zzzzzzzzzzz", nil)
 	eq(t, "unknown", code, 404)
+
+	// Descriptions: the chapters lookup already brought v1's and v2's (none),
+	// so YouTube is not asked again.
+	s.cat.YT = nil
+	code, got = a.do("GET", "/api/description/"+tV1, nil)
+	eq(t, "v1 description", []any{code, got["description"]}, []any{200, "Slides: https://example.com/slides"})
+	code, got = a.do("GET", "/api/description/"+tV2, nil)
+	eq(t, "v2 has none", []any{code, got["description"]}, []any{200, ""})
+	// YouTube failing: none for now, and still unknown so asked next time.
+	s.cat.YT = fakeYT{}
+	code, got = a.do("GET", "/api/description/"+tV3, nil)
+	eq(t, "v3", []any{code, got["description"]}, []any{200, ""})
+	var known bool
+	pool.QueryRow(ctx, `SELECT vid_description IS NOT NULL FROM videos WHERE vid_id = $1`, tV3).Scan(&known)
+	eq(t, "v3 still unknown", known, false)
+	code, _ = a.do("GET", "/api/description/zzzzzzzzzzz", nil)
+	eq(t, "unknown description", code, 404)
 }
 
 func TestTogglAPI(t *testing.T) {

@@ -885,6 +885,35 @@ document.addEventListener("click", e => { if (!e.target.closest("#qmenu")) close
 addEventListener("scroll", closeQualityMenu, {passive: true});
 
 /* ---- player ---- */
+// The author's description: its links open in a new tab and its timestamps
+// (1:23, 1:02:03) jump the player there. Built from text nodes, never HTML,
+// so nothing in a description can run on the page.
+const DESC_RE = /(https?:\/\/[^\s<>"]*[^\s<>"'.,;:!?)\]])|(\b(?:\d{1,2}:)?\d{1,2}:\d{2}\b)/g;
+function showDesc(text) {
+  const box = $("#pdesc");
+  box.replaceChildren();
+  $("#pdescbox").hidden = !text;
+  let last = 0;
+  for (const m of text.matchAll(DESC_RE)) {
+    box.append(text.slice(last, m.index));
+    if (m[1]) {
+      const a = document.createElement("a");
+      a.href = m[1]; a.target = "_blank"; a.rel = "noopener noreferrer";
+      a.textContent = m[1];
+      box.append(a);
+    } else {
+      const b = document.createElement("button");
+      b.className = "ts";
+      b.textContent = m[2];
+      const at = m[2].split(":").reduce((t, x) => t * 60 + Number(x), 0);
+      b.title = "Jump here";
+      b.onclick = () => { const vid = $("#pvideo"); vid.currentTime = at; vid.play().catch(()=>{}); };
+      box.append(b);
+    }
+    last = m.index + m[0].length;
+  }
+  box.append(text.slice(last));
+}
 let current = null, saveTimer = null;
 // Share of a video past which it counts as finished.
 const FINISHED = 0.92;
@@ -899,7 +928,14 @@ function open_(v, from) {
   $("#ptitle").textContent = v.title;
   $("#psub").textContent = [v.channel, fmtDate(v), fmtDur(v.duration)]
                              .filter(Boolean).join(" · ");
-  $("#pdesc").textContent = v.description || "";
+  showDesc(v.description || "");
+  // Quick syncs list videos without one: ask for it the first time.
+  if (!v.description)
+    api(`/api/description/${v.id}`).then(d => {
+      if (current?.id !== v.id || !d.description) return;
+      v.description = d.description;
+      showDesc(d.description);
+    }).catch(() => {});
   showChapters([], v.id);
   showMarks([], v.id);
   api(`/api/marks/${v.id}`).then(d => showMarks(d.marks, v.id)).catch(() => {});
@@ -1636,41 +1672,75 @@ function togglRow(c) {
   label.className = "ch";
   label.textContent = c.channel;
   label.title = c.channel;
-  // Empties the name, so entries go back to being named automatically.
+  // Back to the default name.
   const reset = document.createElement("button");
   reset.className = "link";
-  reset.textContent = "Reset name";
-  reset.title = "Name entries automatically: the playlist's title, else the channel's";
+  reset.textContent = "Use default name";
   head.append(label, reset);
   el.appendChild(head);
+
+  // The name entries get when none is set, shown in the field itself so it
+  // reads as already done, not as something left to type. Watched from a
+  // playlist it is the playlist's title, so the open playlist shows that.
+  const src = !tgAll && tgOpenSource();
+  const fromList = src && src.kind === "playlist" && src.section !== "picks";
+  const auto = fromList ? src.name : c.channel;
+  const autoWhy = fromList ? "Default: this playlist's title"
+    : tgAll ? "Default: the channel's name, or the playlist's title when watched from a playlist"
+    : "Default: the channel's name";
 
   const fields = {};
   for (const [key, ph] of [["name", "Name in Toggl"], ["project", "Project"],
                            ["tags", "Tags, comma separated"]]) {
     const inp = document.createElement("input");
     inp.value = c[key] || "";
-    inp.placeholder = key === "name" ? `Automatic: playlist, else ${c.channel}` : ph;
+    inp.placeholder = ph;
     inp.title = ph;
     inp.autocomplete = "off";
     inp.spellcheck = false;
     // Saved as you type rather than behind a Save button: there is one row per
     // channel and nothing here is destructive, so a trip to a button would be
     // the only hard part of the job.
-    inp.oninput = () => {
-      reset.hidden = !fields.name.value.trim();
+    const save = () => {
       clearTimeout(tgTimer);
       tgTimer = setTimeout(() => saveToggl(c, fields), 500);
     };
+    inp.oninput = save;
     fields[key] = inp;
-    el.appendChild(inp);
+    if (key !== "name") { el.appendChild(inp); continue; }
+
+    const wrap = document.createElement("span");
+    wrap.className = "tgname";
+    const tag = document.createElement("span");
+    tag.className = "tag";
+    tag.textContent = "default";
+    tag.title = autoWhy;
+    wrap.append(inp, tag);
+    el.appendChild(wrap);
+    const paint = isAuto => {
+      inp.classList.toggle("auto", isAuto);
+      tag.hidden = !isAuto;       // the tag says it is the default...
+      reset.hidden = isAuto;      // ...and the link offers it back once it isn't
+      inp.title = isAuto ? autoWhy : ph;
+    };
+    if (!inp.value.trim()) { inp.value = auto; paint(true); } else paint(false);
+    // Typing over the default makes it yours; clearing it, or typing the
+    // default back, returns to automatic.
+    inp.onfocus = () => { if (inp.classList.contains("auto")) inp.select(); };
+    inp.oninput = () => {
+      const v = inp.value.trim();
+      paint(!v || v === auto);
+      save();
+    };
+    inp.onblur = () => { if (!inp.value.trim()) inp.value = auto; };
+    reset.onclick = () => { inp.value = auto; paint(true); save(); };
   }
-  reset.hidden = !fields.name.value.trim();
-  reset.onclick = () => { fields.name.value = ""; fields.name.oninput(); };
   return el;
 }
 
 async function saveToggl(c, fields) {
-  const patch = {channel: c.channel, name: fields.name.value,
+  const patch = {channel: c.channel,
+                 name: fields.name.classList.contains("auto") ? "" : fields.name.value.trim(),
                  project: fields.project.value, tags: fields.tags.value};
   try {
     const r = await post("/api/toggl", patch);

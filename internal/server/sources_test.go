@@ -25,15 +25,19 @@ func (fakeYT) Browse(_ context.Context, ref string) (string, []ytdlp.BrowseItem,
 	}, nil
 }
 
-// Chapters: v1 has two, v2 has none, anything else is YouTube failing.
-func (fakeYT) Chapters(_ context.Context, vid string) ([]ytdlp.Chapter, error) {
+// Details: v1 has two chapters and a description with a link, v2 has
+// neither, anything else is YouTube failing.
+func (fakeYT) Details(_ context.Context, vid string) (ytdlp.Details, error) {
 	switch vid {
 	case tV1:
-		return []ytdlp.Chapter{{Start: 0, End: 30, Title: "Intro"}, {Start: 30, End: 60, Title: "Rest"}}, nil
+		return ytdlp.Details{
+			Chapters:    []ytdlp.Chapter{{Start: 0, End: 30, Title: "Intro"}, {Start: 30, End: 60, Title: "Rest"}},
+			Description: "Slides: https://example.com/slides",
+		}, nil
 	case tV2:
-		return nil, nil
+		return ytdlp.Details{}, nil
 	}
-	return nil, ytdlp.ErrNothing
+	return ytdlp.Details{}, ytdlp.ErrNothing
 }
 
 func TestSourcesAPI(t *testing.T) {

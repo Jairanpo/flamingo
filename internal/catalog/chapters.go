@@ -27,14 +27,61 @@ func (c *Catalog) Chapters(ctx context.Context, vid string) ([]ytdlp.Chapter, er
 	if checked != nil {
 		return c.storedChapters(ctx, vid)
 	}
-	found, err := c.YT.Chapters(ctx, vid)
+	d, err := c.YT.Details(ctx, vid)
 	if err != nil {
 		return []ytdlp.Chapter{}, nil
 	}
+	found := d.Chapters
 	if found == nil {
 		found = []ytdlp.Chapter{} // the page reads a list, never null
 	}
+	if err := c.FillDescription(ctx, vid, d.Description); err != nil {
+		return nil, err
+	}
 	return found, c.SetChapters(ctx, vid, found)
+}
+
+// Description returns a video's description, asking YouTube the first time
+// only: quick syncs list videos without one. Offline or rate-limited, it
+// answers none for now and asks again next time.
+func (c *Catalog) Description(ctx context.Context, vid string) (string, error) {
+	var desc *string
+	var checked *time.Time
+	err := c.Pool.QueryRow(ctx, `SELECT vid_description, vid_chapters_checked_at FROM videos WHERE vid_id = $1`,
+		vid).Scan(&desc, &checked)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", ErrUnknownVideo
+	}
+	if err != nil {
+		return "", err
+	}
+	if desc != nil {
+		return *desc, nil
+	}
+	d, err := c.YT.Details(ctx, vid)
+	if err != nil {
+		return "", nil
+	}
+	if err := c.FillDescription(ctx, vid, d.Description); err != nil {
+		return "", err
+	}
+	// The same answer carries the chapters; keep them if never looked up.
+	if checked == nil {
+		if err := c.SetChapters(ctx, vid, d.Chapters); err != nil {
+			return "", err
+		}
+	}
+	return d.Description, nil
+}
+
+// FillDescription stores a description the catalog lacks. NULL means never
+// asked; an empty one means asked, and the author wrote none, so it is not
+// asked again. A description already known is left alone.
+func (c *Catalog) FillDescription(ctx context.Context, vid, desc string) error {
+	_, err := c.Pool.Exec(ctx, `
+		UPDATE videos SET vid_description = $2
+		 WHERE vid_id = $1 AND (vid_description IS NULL OR (vid_description = '' AND $2 <> ''))`, vid, desc)
+	return err
 }
 
 func (c *Catalog) storedChapters(ctx context.Context, vid string) ([]ytdlp.Chapter, error) {

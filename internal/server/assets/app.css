@@ -426,8 +426,22 @@ body.hasfold #jobs { bottom:62px; }
                 font-size:13.5px; text-align:left; padding:5px 8px; border-radius:5px;
                 cursor:pointer; }
 #qmenu button:hover { background:var(--slate); color:var(--blush); }
-#pdesc { max-height:20vh; overflow:auto; white-space:pre-wrap; margin-top:10px;
-         font-size:13.5px; color:#d8d2c8; }
+/* The description sits last, below every player setting; the overlay
+   scrolls to reach it, so long ones show whole. */
+#player { overflow-y:auto; }
+#player video { flex-shrink:0; }
+#pdescbox { margin:22px 0 12px; padding:14px 16px; border-radius:12px;
+            background:var(--cool-lo); border:1px solid var(--cool-edge); }
+#pdescbox[hidden] { display:none; }
+#pdescbox h3 { margin:0 0 8px; font-size:12px; font-weight:800; letter-spacing:.08em;
+               text-transform:uppercase; color:var(--cool); }
+#pdesc { white-space:pre-wrap; overflow-wrap:anywhere; font-size:14px; line-height:1.6;
+         color:#d8d2c8; }
+#pdesc a { color:var(--accent); }
+#pdesc a:hover { color:var(--blush); }
+#pdesc .ts { border:0; background:none; padding:0; font:inherit; color:var(--warm);
+             font-weight:700; cursor:pointer; text-decoration:underline dotted; }
+#pdesc .ts:hover { color:var(--blush); }
 /* The Toggl timer, when a token is configured. Without one the whole row
    stays away rather than offering a button that cannot work. */
 /* In Toggl's own pink and dark purple, so it reads as Toggl at a glance. */
@@ -511,6 +525,17 @@ body.hasfold #jobs { bottom:62px; }
                border:1px solid var(--edge); border-radius:6px;
                padding:6px 8px; font:inherit; font-size:13px; }
 .tgrow input:focus { outline:none; border-color:var(--accent); }
+/* A default name is a real value, already in place: shown in the accent
+   with a small "default" tag, not greyed out like a hint to fill in. */
+.tgname { position:relative; display:flex; min-width:0; }
+.tgname input { flex:1; padding-right:70px; }
+.tgname input.auto { color:var(--blush); font-weight:700;
+                     border-color:rgba(235,159,239,.45); background:rgba(235,159,239,.06); }
+.tgname .tag { position:absolute; right:6px; top:50%; transform:translateY(-50%);
+               font-size:10.5px; font-weight:800; letter-spacing:.06em; text-transform:uppercase;
+               padding:2px 7px; border-radius:999px; background:var(--slate);
+               color:var(--blush); pointer-events:none; }
+.tgname .tag[hidden] { display:none; }
 @media (max-width:560px) {
   .tgrow { grid-template-columns:1fr; }
 }

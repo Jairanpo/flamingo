@@ -30,11 +30,12 @@ type Track struct {
 // each height on offer to its track; Default is the tallest one within the
 // height asked for. The URLs are signed and expire after a few hours.
 type Stream struct {
-	Duration *int
-	Chapters []Chapter
-	Audio    Track
-	Videos   map[int]Track
-	Default  int
+	Duration    *int
+	Chapters    []Chapter
+	Description string
+	Audio       Track
+	Videos      map[int]Track
+	Default     int
 }
 
 // ErrNoStream means the video exists but offers nothing the page can play.
@@ -42,18 +43,25 @@ var ErrNoStream = errors.New("no separate H.264 + AAC streams to play")
 
 func videoURL(vid string) string { return "https://www.youtube.com/watch?v=" + vid }
 
-// Chapters asks YouTube for one video's chapters (often none).
-func (r Runner) Chapters(ctx context.Context, vid string) ([]Chapter, error) {
+// Details is what one video's page says beyond the listing: its chapters
+// (often none) and the author's description, links and all.
+type Details struct {
+	Chapters    []Chapter
+	Description string
+}
+
+// Details asks YouTube for one video's chapters and description.
+func (r Runner) Details(ctx context.Context, vid string) (Details, error) {
 	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
 	lines, stderr, err := r.lines(ctx, "--dump-json", "--skip-download", "--no-playlist", videoURL(vid))
 	if err != nil {
-		return nil, err
+		return Details{}, err
 	}
 	if len(lines) == 0 {
-		return nil, fmt.Errorf("yt-dlp %s: %s", vid, trimErr(stderr))
+		return Details{}, fmt.Errorf("yt-dlp %s: %s", vid, trimErr(stderr))
 	}
-	return chapters(lines[0]), nil
+	return Details{Chapters: chapters(lines[0]), Description: s(lines[0], "description")}, nil
 }
 
 func chapters(info map[string]any) []Chapter {
@@ -196,7 +204,8 @@ func pickStream(info map[string]any, maxHeight int) (*Stream, error) {
 	if len(best) == 0 || audio == nil {
 		return nil, ErrNoStream
 	}
-	st := &Stream{Chapters: chapters(info), Audio: audio.track("audio"), Videos: map[int]Track{}}
+	st := &Stream{Chapters: chapters(info), Description: s(info, "description"),
+		Audio: audio.track("audio"), Videos: map[int]Track{}}
 	if parsed.Duration != nil {
 		d := int(*parsed.Duration)
 		st.Duration = &d

@@ -33,6 +33,7 @@ const placeholder = `<svg xmlns="http://www.w3.org/2000/svg" width="320" height=
 func (s *Server) routesMedia(mux *http.ServeMux) {
 	mux.HandleFunc("GET /thumb/{vid}", s.requireUser(s.thumb))
 	mux.HandleFunc("GET /api/chapters/{vid}", s.requireUser(s.apiChapters))
+	mux.HandleFunc("GET /api/description/{vid}", s.requireUser(s.apiDescription))
 	mux.HandleFunc("GET /api/stream/{vid}", s.requireUser(s.apiStream))
 	mux.HandleFunc("GET /stream/{vid}/audio", s.requireUser(s.stream))
 	mux.HandleFunc("GET /stream/{vid}/video/{height}", s.requireUser(s.stream))
@@ -122,6 +123,26 @@ func (s *Server) apiChapters(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"chapters": chs})
 }
 
+// apiDescription fills in what a quick sync left out, the first time a
+// video's player opens without one.
+func (s *Server) apiDescription(w http.ResponseWriter, r *http.Request) {
+	vid := r.PathValue("vid")
+	if !vidRE.MatchString(vid) {
+		fail(w, http.StatusBadRequest, "bad id")
+		return
+	}
+	d, err := s.cat.Description(r.Context(), vid)
+	if errors.Is(err, catalog.ErrUnknownVideo) {
+		fail(w, http.StatusNotFound, "unknown video")
+		return
+	}
+	if err != nil {
+		s.failErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"description": d})
+}
+
 // --- streaming without downloading ---------------------------------------
 //
 // The page plays a stream through MediaSource: it reads each track's index,
@@ -209,6 +230,9 @@ func (s *Server) apiStream(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := s.cat.FillDuration(r.Context(), vid, st.Duration); err != nil {
 		s.log.Warn("stream: duration", "vid", vid, "err", err)
+	}
+	if err := s.cat.FillDescription(r.Context(), vid, st.Description); err != nil {
+		s.log.Warn("stream: description", "vid", vid, "err", err)
 	}
 	videos := map[string]string{}
 	for h, t := range st.Videos {
