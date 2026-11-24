@@ -20,7 +20,7 @@ var vidRE = regexp.MustCompile(`^[A-Za-z0-9_-]{11}$`)
 
 func (s *Server) lib(r *http.Request) (*library.Lib, error) {
 	l := &library.Lib{Pool: s.pool, User: CurrentUser(r).ID}
-	d, err := s.deviceOf(r)
+	d, err := s.pageDevice(r)
 	if err != nil {
 		return nil, err
 	}

@@ -46,6 +46,9 @@ type client struct {
 	base  string
 	http  *http.Client
 	token string // the device token an agent would add; "" for none
+	// device is the computer a page names when it talks to the server
+	// itself, having found that computer's agent.
+	device string
 }
 
 func signIn(t *testing.T, base, name string) *client {
@@ -69,6 +72,9 @@ func (c *client) do(method, path string, body any) (int, map[string]any) {
 	req, _ := http.NewRequest(method, c.base+path, rd)
 	if c.token != "" {
 		req.Header.Set(deviceHeader, c.token)
+	}
+	if c.device != "" {
+		req.Header.Set(pageDeviceHeader, c.device)
 	}
 	resp, err := c.http.Do(req)
 	if err != nil {
@@ -280,7 +286,7 @@ func TestLibraryAPI(t *testing.T) {
 	eq(t, "topic", a.state("")["sources"].([]any)[0].(map[string]any)["topic"], "Study time")
 	_, r = a.do("POST", "/api/toggl", map[string]any{"channel": "alpha", "project": "Learning", "tags": "Youtube, Focus, youtube"})
 	ch := r["channels"].([]any)[0].(map[string]any)
-	eq(t, "toggl rule", []any{ch["channel"], ch["project"], ch["tags"]}, []any{"Alpha", "Learning", "Youtube, Focus"})
+	eq(t, "toggl rule", []any{ch["channel"], ch["project"], ch["tags"]}, []any{"Alpha", "Learning", "Youtube, focus"})
 	eq(t, "bob toggl", b.state("")["toggl"], map[string]any{})
 	a.do("POST", "/api/toggl", map[string]any{"channel": "Alpha"})
 	eq(t, "toggl cleared", a.state("")["toggl"], map[string]any{})

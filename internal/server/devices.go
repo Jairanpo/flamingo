@@ -15,6 +15,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/Jairanpo/flamingo/internal/auth"
+	"github.com/Jairanpo/flamingo/internal/ticket"
 )
 
 // Computers and their download folders.
@@ -62,8 +63,42 @@ func (s *Server) deviceOf(r *http.Request) (*device, error) {
 	return &d, nil
 }
 
+// pageDeviceHeader names the computer a page found its agent on. Unlike the
+// token it proves nothing by itself, so it only counts for a computer the
+// signed-in user paired. A page on another site cannot send it: the server
+// allows no cross-site requests.
+const pageDeviceHeader = "X-Flamingo-Device"
+
+// pageDevice is the computer a signed-in page is on: the one whose agent
+// passed the request along (its token), or the one the page names.
+func (s *Server) pageDevice(r *http.Request) (*device, error) {
+	d, err := s.deviceOf(r)
+	if d != nil || err != nil {
+		return d, err
+	}
+	name := strings.TrimSpace(r.Header.Get(pageDeviceHeader))
+	u := CurrentUser(r)
+	if name == "" || u == nil {
+		return nil, nil
+	}
+	var pd device
+	err = s.pool.QueryRow(r.Context(), `
+		SELECT devi_id, devi_name FROM devices
+		 WHERE devi_name = $1 AND user_id = $2 AND devi_token_hash IS NOT NULL`,
+		name, u.ID).Scan(&pd.ID, &pd.Name)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &pd, nil
+}
+
 func (s *Server) routesDevices(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/agent/pair", s.apiPair)
+	mux.HandleFunc("POST /api/devices/pair-code", s.requireUser(s.apiPairCode))
+	mux.HandleFunc("GET /api/devices/ticket", s.requireUser(s.apiTicket))
 	mux.HandleFunc("GET /api/agent/config", s.requireDevice(s.apiAgentConfig))
 	mux.HandleFunc("PUT /api/agent/inventory", s.requireDevice(s.apiInventory))
 	mux.HandleFunc("GET /api/downloads", s.requireUser(s.apiDownloads))
@@ -90,17 +125,24 @@ func (s *Server) requireDevice(next func(http.ResponseWriter, *http.Request, *de
 
 // --- pairing ------------------------------------------------------------
 
-// apiPair signs a computer in for good: {user, password, device, os} with
-// a user's own login gives back the token the agent keeps. Pairing a name
-// again replaces its token, so a reinstalled computer keeps its downloads.
+// apiPair signs a computer in for good: {device, os} plus either a user's
+// own {user, password} or a one-time {code} from the app gives back the
+// token the agent keeps. Pairing a name again replaces its token, so a
+// reinstalled computer keeps its downloads.
 func (s *Server) apiPair(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 8<<10)
-	var in struct{ User, Password, Device, OS string }
+	var in struct{ User, Password, Code, Device, OS string }
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 		fail(w, http.StatusBadRequest, "bad request")
 		return
 	}
+	code := normCode(in.Code)
 	name := strings.ToLower(strings.TrimSpace(in.User))
+	if code != "" {
+		// Codes are guessed against no account in particular: count the
+		// tries per address under one shared name.
+		name = "\x00pairing-code"
+	}
 	addr, now := clientAddr(r), time.Now()
 	if blocked, wait := s.limiter.Blocked(addr, name, now); blocked {
 		fail(w, http.StatusTooManyRequests, "too many tries; wait "+wait.Round(time.Minute).String())
@@ -110,15 +152,37 @@ func (s *Server) apiPair(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusBadRequest, "a device name is letters, digits, dot, dash and underscore")
 		return
 	}
-	u, err := s.auth.Authenticate(r.Context(), name, in.Password)
-	if errors.Is(err, auth.ErrBadLogin) {
-		s.limiter.Failed(addr, name, now)
-		fail(w, http.StatusUnauthorized, "wrong user name or password")
-		return
+	var u struct {
+		ID   int32
+		Name string
 	}
-	if err != nil {
-		s.failErr(w, err)
-		return
+	if code != "" {
+		// Used once: the DELETE both checks and spends it.
+		err := s.pool.QueryRow(r.Context(), `
+			DELETE FROM pairing_codes pc USING users us
+			 WHERE pc.paco_code_hash = $1 AND pc.paco_expires_at > now() AND us.user_id = pc.user_id
+			RETURNING us.user_id, us.user_name`, tokenHash(code)).Scan(&u.ID, &u.Name)
+		if errors.Is(err, pgx.ErrNoRows) {
+			s.limiter.Failed(addr, name, now)
+			fail(w, http.StatusUnauthorized, "that code is wrong or ran out; make a new one in the app")
+			return
+		}
+		if err != nil {
+			s.failErr(w, err)
+			return
+		}
+	} else {
+		au, err := s.auth.Authenticate(r.Context(), name, in.Password)
+		if errors.Is(err, auth.ErrBadLogin) {
+			s.limiter.Failed(addr, name, now)
+			fail(w, http.StatusUnauthorized, "wrong user name or password")
+			return
+		}
+		if err != nil {
+			s.failErr(w, err)
+			return
+		}
+		u.ID, u.Name = au.ID, au.Name
 	}
 	s.limiter.Succeeded(addr, name)
 
@@ -129,7 +193,7 @@ func (s *Server) apiPair(w http.ResponseWriter, r *http.Request) {
 	}
 	token := base64.RawURLEncoding.EncodeToString(raw)
 	plat := goosToPlatform[in.OS] // "" (unknown) leaves it for the first config call
-	_, err = s.pool.Exec(r.Context(), `
+	_, err := s.pool.Exec(r.Context(), `
 		INSERT INTO devices (devi_name, devi_token_hash, user_id, plat_code)
 		VALUES ($1, $2, $3, NULLIF($4, ''))
 		ON CONFLICT (devi_name) DO UPDATE
@@ -142,6 +206,75 @@ func (s *Server) apiPair(w http.ResponseWriter, r *http.Request) {
 	}
 	s.log.Info("device paired", "device", in.Device, "user", u.Name, "os", in.OS)
 	writeJSON(w, http.StatusOK, map[string]any{"device": in.Device, "token": token})
+}
+
+// --- pairing from the app, and tickets ----------------------------------
+
+const (
+	pairCodeTTL   = 5 * time.Minute
+	pairCodeChars = "ABCDEFGHJKMNPQRSTUVWXYZ23456789" // no 0/O, 1/I/L
+)
+
+// normCode makes a typed code comparable: capitals, no dash or spaces.
+func normCode(c string) string {
+	var b strings.Builder
+	for _, r := range strings.ToUpper(c) {
+		if strings.ContainsRune(pairCodeChars, r) {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
+// apiPairCode hands the page a one-time code for pairing a computer to this
+// account, shown as XXXX-XXXX.
+func (s *Server) apiPairCode(w http.ResponseWriter, r *http.Request) {
+	raw := make([]byte, 8)
+	if _, err := rand.Read(raw); err != nil {
+		s.failErr(w, err)
+		return
+	}
+	code := make([]byte, len(raw))
+	for i, b := range raw {
+		code[i] = pairCodeChars[int(b)%len(pairCodeChars)]
+	}
+	u := CurrentUser(r)
+	expires := time.Now().Add(pairCodeTTL)
+	if _, err := s.pool.Exec(r.Context(), `
+		WITH swept AS (DELETE FROM pairing_codes WHERE paco_expires_at <= now())
+		INSERT INTO pairing_codes (paco_code_hash, user_id, paco_expires_at) VALUES ($1, $2, $3)`,
+		tokenHash(string(code)), u.ID, expires); err != nil {
+		s.failErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"code": string(code[:4]) + "-" + string(code[4:]), "expires": expires.Unix()})
+}
+
+// apiTicket writes the page a pass for one of this user's computers
+// (?device=name), which that computer's agent checks on its own.
+func (s *Server) apiTicket(w http.ResponseWriter, r *http.Request) {
+	u := CurrentUser(r)
+	name := strings.TrimSpace(r.URL.Query().Get("device"))
+	var key []byte
+	err := s.pool.QueryRow(r.Context(), `
+		SELECT devi_token_hash FROM devices
+		 WHERE devi_name = $1 AND user_id = $2 AND devi_token_hash IS NOT NULL`,
+		name, u.ID).Scan(&key)
+	if errors.Is(err, pgx.ErrNoRows) {
+		fail(w, http.StatusNotFound, "no such computer paired to your account")
+		return
+	}
+	if err != nil {
+		s.failErr(w, err)
+		return
+	}
+	exp := time.Now().Add(ticket.TTL).Unix()
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, http.StatusOK, map[string]any{
+		"ticket":  ticket.Sign(key, ticket.Claims{Device: name, User: u.ID, Expiry: exp}),
+		"expires": exp,
+	})
 }
 
 // --- the agent's own calls ------------------------------------------------
@@ -268,7 +401,7 @@ func (s *Server) apiDownloads(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	out := map[string]any{"platforms": plats, "device": nil, "admin": CurrentUser(r).IsAdmin()}
-	d, err := s.deviceOf(r)
+	d, err := s.pageDevice(r)
 	if err != nil {
 		s.failErr(w, err)
 		return
@@ -315,7 +448,7 @@ func (s *Server) apiSetPlatformDir(w http.ResponseWriter, r *http.Request) {
 // apiSetDeviceDir gives this computer its own folder; an empty one goes
 // back to its platform's.
 func (s *Server) apiSetDeviceDir(w http.ResponseWriter, r *http.Request) {
-	d, err := s.deviceOf(r)
+	d, err := s.pageDevice(r)
 	if err != nil {
 		s.failErr(w, err)
 		return

@@ -8,6 +8,9 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/Jairanpo/flamingo/internal/ticket"
 )
 
 // agentCall is a call the agent makes itself, with its token and no cookie.
@@ -127,4 +130,97 @@ func TestDevicesAndFolders(t *testing.T) {
 	eq(t, "old token", code, 401)
 	code, _ = agentCall(t, ts.URL, got["token"].(string), "GET", "/api/agent/config", nil)
 	eq(t, "new token", code, 200)
+
+}
+
+// Pairing from the app with a one-time code, tickets for the agent, and a
+// page that names its computer instead of coming through the agent.
+func TestPairCodeAndTickets(t *testing.T) {
+	ts, pool, s := testServer(t)
+	ctx := context.Background()
+	seed(t, pool)
+	s.auth.CreateUser(ctx, "ana", "", "secret-pass", true)
+	bobU, _ := s.auth.CreateUser(ctx, "bob", "", "secret-pass", false)
+	if _, err := pool.Exec(ctx, `INSERT INTO user_playlists (user_id, play_id) VALUES ($1, $2)`, bobU.ID, tPl); err != nil {
+		t.Fatal(err)
+	}
+	bob := signIn(t, ts.URL, "bob")
+	bob.token = ""
+
+	// A code only for the signed in.
+	code, _ := agentCall(t, ts.URL, "", "POST", "/api/devices/pair-code", nil)
+	eq(t, "code signed out", code, 401)
+	code, got := bob.do("POST", "/api/devices/pair-code", nil)
+	pc, _ := got["code"].(string)
+	if code != 200 || len(pc) != 9 || pc[4] != '-' {
+		t.Fatalf("pair code = %d %v", code, got)
+	}
+
+	// Wrong code: nothing. The right one, typed loosely, pairs to bob, once.
+	code, _ = agentCall(t, ts.URL, "", "POST", "/api/agent/pair",
+		map[string]string{"code": "AAAA-AAAA", "device": "laptop", "os": "linux"})
+	eq(t, "wrong code", code, 401)
+	code, got = agentCall(t, ts.URL, "", "POST", "/api/agent/pair",
+		map[string]string{"code": " " + strings.ToLower(pc) + " ", "device": "laptop", "os": "linux"})
+	tok, _ := got["token"].(string)
+	if code != 200 || tok == "" {
+		t.Fatalf("pair by code = %d %v", code, got)
+	}
+	var owner int32
+	pool.QueryRow(ctx, `SELECT user_id FROM devices WHERE devi_name = 'laptop'`).Scan(&owner)
+	eq(t, "paired to", owner, bobU.ID)
+	code, _ = agentCall(t, ts.URL, "", "POST", "/api/agent/pair",
+		map[string]string{"code": pc, "device": "laptop2", "os": "linux"})
+	eq(t, "code reused", code, 401)
+
+	// An expired code does nothing.
+	_, got = bob.do("POST", "/api/devices/pair-code", nil)
+	pool.Exec(ctx, `UPDATE pairing_codes SET paco_expires_at = now() - interval '1 second'`)
+	code, _ = agentCall(t, ts.URL, "", "POST", "/api/agent/pair",
+		map[string]string{"code": got["code"].(string), "device": "laptop3", "os": "linux"})
+	eq(t, "expired code", code, 401)
+
+	// Tickets: for bob's own computer, signed with its key.
+	code, got = bob.do("GET", "/api/devices/ticket?device=laptop", nil)
+	tk, _ := got["ticket"].(string)
+	if code != 200 || tk == "" {
+		t.Fatalf("ticket = %d %v", code, got)
+	}
+	c, err := ticket.Verify(ticket.KeyOf(tok), "laptop", tk, time.Now())
+	if err != nil || c.User != bobU.ID {
+		t.Fatalf("ticket check: %v %+v", err, c)
+	}
+	ana := signIn(t, ts.URL, "ana")
+	ana.token = ""
+	code, _ = ana.do("GET", "/api/devices/ticket?device=laptop", nil)
+	eq(t, "ticket for someone else's computer", code, 404)
+	code, _ = bob.do("GET", "/api/devices/ticket?device=nowhere", nil)
+	eq(t, "ticket for no computer", code, 404)
+
+	// The page names its computer: bob sees the laptop's files; ana naming
+	// bob's laptop sees nothing on disk and no folder.
+	agentCall(t, ts.URL, tok, "PUT", "/api/agent/inventory",
+		map[string]any{"files": []map[string]any{{"id": tV2, "size": 5}}})
+	have := func(c *client) bool {
+		for _, v := range c.state("")["videos"].([]any) {
+			if m := v.(map[string]any); m["id"] == tV2 {
+				return m["have"] == true
+			}
+		}
+		return false
+	}
+	eq(t, "no name", have(bob), false)
+	bob.device = "laptop"
+	eq(t, "named", have(bob), true)
+	_, got = bob.do("GET", "/api/downloads", nil)
+	if got["device"] == nil {
+		t.Error("the sheet lost the named computer's folder")
+	}
+	code, _ = bob.do("POST", "/api/downloads/device", map[string]string{"media_dir": "/mnt/f"})
+	eq(t, "folder for named computer", code, 200)
+	ana.device = "laptop"
+	_, got = ana.do("GET", "/api/downloads", nil)
+	eq(t, "someone else's computer", got["device"], nil)
+	code, _ = ana.do("POST", "/api/downloads/device", map[string]string{"media_dir": "/x"})
+	eq(t, "folder on someone else's computer", code, 400)
 }

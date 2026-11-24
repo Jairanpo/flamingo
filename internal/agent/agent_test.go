@@ -7,13 +7,16 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/Jairanpo/flamingo/internal/config"
+	"github.com/Jairanpo/flamingo/internal/ticket"
 )
 
 func touch(t *testing.T, path, body string) {
@@ -221,5 +224,85 @@ func TestRemoveAndJobs(t *testing.T) {
 	_ = json.Unmarshal(w.Body.Bytes(), &out)
 	if len(out.Jobs) != 2 || out.Jobs[0]["kind"] != "source" || out.Jobs[1]["title"] != "Two" {
 		t.Errorf("jobs = %s", w.Body.String())
+	}
+}
+
+// A page served by the server itself calls the agent from the server's
+// address, with a ticket instead of the agent's cookie.
+func TestTicketsFromTheServersPage(t *testing.T) {
+	a, fs, h := newAgent(t)
+	a.Cfg.DeviceName = "desk"
+	touch(t, filepath.Join(fs.dir, "C", "x_[aaaaaaaaaa1].mp4"), "0123456789")
+	a.sync(context.Background(), false)
+	page := strings.TrimRight(a.Cfg.ServerURL, "/") // http://127.0.0.1:<port>
+	local := strings.Replace(page, "127.0.0.1", "localhost", 1)
+	good := ticket.Sign(ticket.KeyOf("tok"), ticket.Claims{Device: "desk", User: 1, Expiry: time.Now().Add(time.Minute).Unix()})
+	other := ticket.Sign(ticket.KeyOf("tok"), ticket.Claims{Device: "laptop", User: 1, Expiry: time.Now().Add(time.Minute).Unix()})
+	old := ticket.Sign(ticket.KeyOf("tok"), ticket.Claims{Device: "desk", User: 1, Expiry: time.Now().Add(-time.Second).Unix()})
+	forged := ticket.Sign(ticket.KeyOf("not-tok"), ticket.Claims{Device: "desk", User: 1, Expiry: time.Now().Add(time.Minute).Unix()})
+
+	// Hello: readable by the server's page (either local name), not others.
+	w := send(h, "GET", "/api/hello", "", map[string]string{"Origin": local})
+	if w.Code != 200 || w.Header().Get("Access-Control-Allow-Origin") != local || !strings.Contains(w.Body.String(), `"desk"`) {
+		t.Errorf("hello = %d %q %s", w.Code, w.Header().Get("Access-Control-Allow-Origin"), w.Body.String())
+	}
+	if w := send(h, "GET", "/api/hello", "", map[string]string{"Origin": "http://evil.example"}); w.Header().Get("Access-Control-Allow-Origin") != "" {
+		t.Error("another site may read hello")
+	}
+
+	// Preflight: allowed for the page, with Chrome's local-network consent.
+	w = send(h, "OPTIONS", "/api/get/aaaaaaaaaa2", "", map[string]string{"Origin": page,
+		"Access-Control-Request-Method": "POST", "Access-Control-Request-Private-Network": "true"})
+	if w.Code != 204 || w.Header().Get("Access-Control-Allow-Private-Network") != "true" ||
+		!strings.Contains(w.Header().Get("Access-Control-Allow-Headers"), TicketHeader) {
+		t.Errorf("preflight = %d %v", w.Code, w.Header())
+	}
+	if w := send(h, "OPTIONS", "/api/get/aaaaaaaaaa2", "", map[string]string{"Origin": "http://evil.example",
+		"Access-Control-Request-Method": "POST"}); w.Code != 403 {
+		t.Errorf("evil preflight = %d", w.Code)
+	}
+
+	// Media by ticket in the address; refused when the ticket is wrong.
+	for name, tk := range map[string]string{"other computer": other, "expired": old, "forged": forged} {
+		if w := send(h, "GET", "/media/aaaaaaaaaa1?t="+tk, "", nil); w.Code != 401 {
+			t.Errorf("%s ticket = %d", name, w.Code)
+		}
+	}
+	if w := send(h, "GET", "/media/aaaaaaaaaa1?t="+good, "", map[string]string{"Range": "bytes=0-1"}); w.Code != 206 || w.Body.String() != "01" {
+		t.Errorf("media by ticket = %d %q", w.Code, w.Body.String())
+	}
+
+	// A download from the page, ticket in the header; another site's page
+	// is refused even with a good ticket.
+	a.dl.queue = make(chan request, 1)
+	a.dl.once.Do(func() {})
+	if w := send(h, "POST", "/api/get/aaaaaaaaaa2", "", map[string]string{"Origin": "http://evil.example", TicketHeader: good}); w.Code != 403 {
+		t.Errorf("evil get = %d", w.Code)
+	}
+	if w := send(h, "POST", "/api/get/aaaaaaaaaa2", "", map[string]string{"Origin": page, TicketHeader: good}); w.Code != 200 {
+		t.Errorf("get by ticket = %d %s", w.Code, w.Body.String())
+	}
+	if w := send(h, "POST", "/api/sync", "", map[string]string{"Origin": page, TicketHeader: good}); w.Code != 200 {
+		t.Errorf("sync = %d", w.Code)
+	}
+	if w := send(h, "POST", "/api/sync", "", map[string]string{"Origin": page}); w.Code != 401 {
+		t.Errorf("sync without ticket or cookie = %d", w.Code)
+	}
+}
+
+func TestPageOrigins(t *testing.T) {
+	u, _ := url.Parse("http://127.0.0.1:8430")
+	got := pageOrigins(u, []string{"https://Flamingo.Example.com/", "nonsense"})
+	for _, o := range []string{"http://127.0.0.1:8430", "http://localhost:8430", "http://[::1]:8430", "https://flamingo.example.com"} {
+		if !got[o] {
+			t.Errorf("missing %s in %v", o, got)
+		}
+	}
+	if len(got) != 4 {
+		t.Errorf("extra origins: %v", got)
+	}
+	u, _ = url.Parse("https://flamingo.example.com")
+	if got := pageOrigins(u, nil); len(got) != 1 {
+		t.Errorf("cloud server = %v", got)
 	}
 }

@@ -22,12 +22,18 @@ import (
 	"time"
 
 	"github.com/Jairanpo/flamingo/internal/config"
+	"github.com/Jairanpo/flamingo/internal/ticket"
 	"github.com/Jairanpo/flamingo/internal/ytdlp"
 )
 
 // DeviceHeader carries this computer's token to the server; it must match
 // the server's name for it.
 const DeviceHeader = "X-Flamingo-Device-Token"
+
+// TicketHeader carries the pass a page got from the server (package
+// ticket). A video or subtitle address, which cannot carry a header, puts
+// it in ?t= instead.
+const TicketHeader = "X-Flamingo-Ticket"
 
 func init() {
 	_ = mime.AddExtensionType(".m4a", "audio/mp4")
@@ -55,6 +61,10 @@ type Agent struct {
 	syncMu   sync.Mutex
 
 	users userCache
+	// origins are the page addresses allowed to call this agent from
+	// another address: the server's own, and any in page_origins.
+	origins map[string]bool
+	key     []byte // checks tickets: sha256 of the token
 }
 
 func New(cfg *config.Agent, token string, log *slog.Logger) (*Agent, error) {
@@ -63,7 +73,9 @@ func New(cfg *config.Agent, token string, log *slog.Logger) (*Agent, error) {
 		return nil, fmt.Errorf("server_url %q is not a full address (http://host:port)", cfg.ServerURL)
 	}
 	a := &Agent{Cfg: cfg, Token: token, Log: log, server: u,
-		client: &http.Client{Timeout: 30 * time.Second}}
+		client:  &http.Client{Timeout: 30 * time.Second},
+		origins: pageOrigins(u, cfg.PageOrigins),
+		key:     ticket.KeyOf(token)}
 	a.proxy = &httputil.ReverseProxy{
 		Rewrite: func(pr *httputil.ProxyRequest) {
 			pr.SetURL(u)
@@ -230,12 +242,82 @@ func (a *Agent) Handler() http.Handler {
 	mux.HandleFunc("GET /subs/{vid}/{lang}", a.signedIn(a.subs))
 	mux.HandleFunc("GET /api/jobs", a.signedIn(a.apiJobs))
 	mux.HandleFunc("POST /api/jobs/clear", a.signedIn(a.apiJobsClear))
+	// For a page served by the server itself: is there an agent here, and
+	// for which computer? Then, after a folder change, look again.
+	mux.HandleFunc("GET /api/hello", a.apiHello)
+	mux.HandleFunc("POST /api/sync", a.signedIn(a.apiSync))
 	// A folder changed in the app: look in the new place before answering,
 	// so the page's next refresh already shows what is there.
 	mux.HandleFunc("POST /api/downloads/device", a.thenSync)
 	mux.HandleFunc("POST /api/downloads/platform", a.thenSync)
 	mux.Handle("/", a.proxy)
-	return sameOrigin(mux)
+	return a.cors(a.sameOrigin(mux))
+}
+
+// pageOrigins is the set of page addresses allowed in: the server's own,
+// with localhost and 127.0.0.1 counting as one when it is on this machine,
+// and any the config names.
+func pageOrigins(server *url.URL, extra []string) map[string]bool {
+	set := map[string]bool{}
+	add := func(scheme, host string) { set[strings.ToLower(scheme+"://"+host)] = true }
+	add(server.Scheme, server.Host)
+	switch server.Hostname() {
+	case "localhost", "127.0.0.1", "::1":
+		port := server.Port()
+		for _, h := range []string{"localhost", "127.0.0.1", "[::1]"} {
+			if port != "" {
+				h += ":" + port
+			}
+			add(server.Scheme, h)
+		}
+	}
+	for _, o := range extra {
+		if u, err := url.Parse(strings.TrimSpace(o)); err == nil && u.Scheme != "" && u.Host != "" {
+			add(u.Scheme, u.Host)
+		}
+	}
+	return set
+}
+
+// cors lets the Flamingo page, served from the server's address, call this
+// agent. Other sites get no answer they can read.
+func (a *Agent) cors(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		origin := r.Header.Get("Origin")
+		allowed := origin != "" && a.origins[strings.ToLower(origin)]
+		if allowed {
+			w.Header().Set("Access-Control-Allow-Origin", origin)
+			w.Header().Add("Vary", "Origin")
+		}
+		if r.Method == http.MethodOptions && r.Header.Get("Access-Control-Request-Method") != "" {
+			if !allowed {
+				http.Error(w, "cross-site request refused", http.StatusForbidden)
+				return
+			}
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, "+TicketHeader)
+			w.Header().Set("Access-Control-Max-Age", "600")
+			// Chrome asks before a public page may reach this computer.
+			if r.Header.Get("Access-Control-Request-Private-Network") == "true" {
+				w.Header().Set("Access-Control-Allow-Private-Network", "true")
+			}
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// apiHello tells a page there is an agent here, and for which computer.
+func (a *Agent) apiHello(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]any{"device": a.Cfg.DeviceName, "paired": true})
+}
+
+// apiSync looks in the download folder again and tells the server, so a
+// page's next refresh shows what is there.
+func (a *Agent) apiSync(w http.ResponseWriter, r *http.Request) {
+	a.sync(r.Context(), true)
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
 func (a *Agent) thenSync(w http.ResponseWriter, r *http.Request) {
@@ -287,8 +369,23 @@ func (c *userCache) remember(key string) {
 
 // signedIn lets a request reach this computer's files only when the server
 // says its cookie belongs to a signed-in user.
+//
+// A page served by the server itself shows a ticket instead, which the
+// agent checks on its own.
 func (a *Agent) signedIn(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		tk := r.Header.Get(TicketHeader)
+		if tk == "" {
+			tk = r.URL.Query().Get("t")
+		}
+		if tk != "" {
+			if _, err := ticket.Verify(a.key, a.Cfg.DeviceName, tk, time.Now()); err != nil {
+				fail(w, http.StatusUnauthorized, "ticket refused: "+strings.TrimPrefix(err.Error(), "ticket: "))
+				return
+			}
+			next(w, r)
+			return
+		}
 		cookie := r.Header.Get("Cookie")
 		if cookie == "" || !a.users.fresh(cookie) {
 			req, _ := http.NewRequestWithContext(r.Context(), "GET", a.Cfg.ServerURL+"/api/me", nil)
@@ -316,7 +413,7 @@ func (a *Agent) signedIn(next http.HandlerFunc) http.HandlerFunc {
 
 // sameOrigin refuses state-changing requests from another site's page, as
 // the server does: this port is reachable by any page the browser opens.
-func sameOrigin(next http.Handler) http.Handler {
+func (a *Agent) sameOrigin(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet, http.MethodHead, http.MethodOptions:
@@ -324,7 +421,7 @@ func sameOrigin(next http.Handler) http.Handler {
 			return
 		}
 		if origin := r.Header.Get("Origin"); origin != "" {
-			if o, err := url.Parse(origin); err != nil || o.Host != r.Host {
+			if o, err := url.Parse(origin); (err != nil || o.Host != r.Host) && !a.origins[strings.ToLower(origin)] {
 				http.Error(w, "cross-site request refused", http.StatusForbidden)
 				return
 			}

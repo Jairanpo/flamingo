@@ -29,11 +29,13 @@ func TestAgentSaveLoad(t *testing.T) {
 		t.Fatalf("defaults = %+v %v", c, err)
 	}
 	c.ServerURL, c.DeviceName = "http://srv:8430/", "desk"
+	c.PageOrigins = []string{"https://flamingo.example.com"}
 	if err := SaveAgent(p, c); err != nil {
 		t.Fatal(err)
 	}
 	c2, err := LoadAgent(p)
-	if err != nil || c2.ServerURL != "http://srv:8430" || c2.DeviceName != "desk" || c2.Download.MaxHeight != 1080 {
+	if err != nil || c2.ServerURL != "http://srv:8430" || c2.DeviceName != "desk" || c2.Download.MaxHeight != 1080 ||
+		len(c2.PageOrigins) != 1 || c2.PageOrigins[0] != "https://flamingo.example.com" {
 		t.Errorf("reloaded = %+v %v", c2, err)
 	}
 	if SafeDeviceName("Jair's MacBook Pro") != "jair-s-macbook-pro" {

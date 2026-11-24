@@ -66,14 +66,17 @@ func agentRunCmd(path *string) *cobra.Command {
 }
 
 func agentPairCmd(path *string) *cobra.Command {
-	var server, name, user string
+	var server, name, user, code string
 	var pwStdin bool
 	cmd := &cobra.Command{
 		Use:   "pair",
 		Short: "Sign this computer in to the server (once)",
 		Long: `Signs this computer in with your Flamingo account and keeps the key the
 server hands back. Pairing the same name again replaces the key, so a
-reinstalled computer keeps its list of downloads.`,
+reinstalled computer keeps its list of downloads.
+
+With --code, a one-time code from the app (Downloads) stands in for your
+user name and password.`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			cfg, err := config.LoadAgent(*path)
 			if err != nil {
@@ -88,18 +91,23 @@ reinstalled computer keeps its list of downloads.`,
 			if name != "" {
 				cfg.DeviceName = name
 			}
-			in := bufio.NewReader(cmd.InOrStdin())
-			if user == "" {
-				fmt.Fprint(cmd.ErrOrStderr(), "Flamingo user: ")
-				line, _ := in.ReadString('\n')
-				user = strings.TrimSpace(line)
+			req := map[string]string{"device": cfg.DeviceName, "os": runtime.GOOS}
+			if code != "" {
+				req["code"] = code
+			} else {
+				in := bufio.NewReader(cmd.InOrStdin())
+				if user == "" {
+					fmt.Fprint(cmd.ErrOrStderr(), "Flamingo user: ")
+					line, _ := in.ReadString('\n')
+					user = strings.TrimSpace(line)
+				}
+				pw, err := askOnce(cmd, in, pwStdin)
+				if err != nil {
+					return err
+				}
+				req["user"], req["password"] = user, pw
 			}
-			pw, err := askOnce(cmd, in, pwStdin)
-			if err != nil {
-				return err
-			}
-			body, _ := json.Marshal(map[string]string{
-				"user": user, "password": pw, "device": cfg.DeviceName, "os": runtime.GOOS})
+			body, _ := json.Marshal(req)
 			client := &http.Client{Timeout: 30 * time.Second}
 			resp, err := client.Post(cfg.ServerURL+"/api/agent/pair", "application/json", bytes.NewReader(body))
 			if err != nil {
@@ -131,6 +139,7 @@ reinstalled computer keeps its list of downloads.`,
 	cmd.Flags().StringVar(&server, "server", "", "the server's address, e.g. http://192.168.1.192:8430")
 	cmd.Flags().StringVar(&name, "name", "", "this computer's name (default: its host name)")
 	cmd.Flags().StringVar(&user, "user", "", "your Flamingo user name")
+	cmd.Flags().StringVar(&code, "code", "", "a one-time pairing code from the app, instead of a password")
 	cmd.Flags().BoolVar(&pwStdin, "password-stdin", false, "read the password from standard input")
 	return cmd
 }

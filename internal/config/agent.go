@@ -17,6 +17,10 @@ type Agent struct {
 	Listen     string `mapstructure:"listen"`
 	ServerURL  string `mapstructure:"server_url"`
 	DeviceName string `mapstructure:"device_name"`
+	// PageOrigins are the addresses the Flamingo page is opened at, when
+	// they differ from server_url (a cloud server behind its own name, say).
+	// Only pages from the server's own address, or these, may use the agent.
+	PageOrigins []string `mapstructure:"page_origins"`
 	// TokenFile holds the key pairing gave this computer. Kept apart from
 	// the YAML so the YAML can be shared or shown without leaking it.
 	TokenFile string        `mapstructure:"token_file"`
@@ -49,6 +53,7 @@ func agentDefaults(v *viper.Viper) {
 	host, _ := os.Hostname()
 	v.SetDefault("listen", "127.0.0.1:8421")
 	v.SetDefault("server_url", "")
+	v.SetDefault("page_origins", []string{})
 	v.SetDefault("device_name", SafeDeviceName(host))
 	v.SetDefault("token_file", filepath.Join(configDir(), "agent.token"))
 	v.SetDefault("download.max_height", 1080)
@@ -123,6 +128,12 @@ download:
   max_height: %d
   sub_langs: %q
 `, c.Listen, c.ServerURL, c.DeviceName, c.Download.MaxHeight, c.Download.SubLangs)
+	if len(c.PageOrigins) > 0 {
+		body += "page_origins:\n"
+		for _, o := range c.PageOrigins {
+			body += fmt.Sprintf("  - %q\n", o)
+		}
+	}
 	return os.WriteFile(path, []byte(body), 0o600)
 }
 
