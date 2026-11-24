@@ -3,9 +3,16 @@ const state = { q:"", source:"", collection:"", have:null, starred:false,
                 collections:[], sort:"default", toggl:{}, togglChannels:[],
                 all:false, pins:[], maxPins:5 };
 const $ = s => document.querySelector(s);
-// Downloads live on a computer, so they only show when the page came
-// through that computer's agent (phase 6); otherwise everything streams.
-const ON_DEVICE = document.body.dataset.device !== "";
+// Downloads live on a computer, so they only show when the page knows this
+// computer's agent. Either the page came through the agent (8421: it talks
+// to the agent as its own address), or it came from the server and finds
+// the agent itself, then talks to it directly with a ticket the server
+// signs (findAgent, below). Otherwise everything streams.
+const VIA_AGENT = document.body.dataset.device !== "";
+let ON_DEVICE = VIA_AGENT;
+const AGENT_URL = "http://127.0.0.1:8421";
+// The computer a server-served page found, and its pass for that agent.
+const agent = { device: "", ticket: "", expires: 0, state: VIA_AGENT ? "via" : "looking" };
 const fmtDur = s => { if(!s) return ""; s=Math.round(s);
   const h=Math.floor(s/3600), m=Math.floor(s%3600/60), x=s%60;
   return h ? `${h}:${String(m).padStart(2,"0")}:${String(x).padStart(2,"0")}`
@@ -14,6 +21,8 @@ const fmtDate = v => !v.date ? "" : (v.date_approx ? "~" + v.date.slice(0,7) : v
 const fmtSize = b => b ? (b/1e9 >= 1 ? (b/1e9).toFixed(1)+" GB" : Math.round(b/1e6)+" MB") : "";
 
 async function api(path, opts) {
+  // Tell the server which computer this page is on, so "on disk" means it.
+  if (agent.device) opts = {...opts, headers: {...(opts && opts.headers), "X-Flamingo-Device": agent.device}};
   const r = await fetch(path, opts);
   if (r.status === 401) {
     // Signed out elsewhere, or the session ran out: back to the door.
@@ -25,6 +34,53 @@ async function api(path, opts) {
 }
 const post = (p, body) => api(p, {method:"POST", headers:{"Content-Type":"application/json"},
                                  body: JSON.stringify(body||{})});
+
+/* ---- this computer's agent ----
+   The server's page asks the agent at AGENT_URL "is anyone there?", then
+   asks the server for a ticket for that computer. The ticket lasts fifteen
+   minutes; it is renewed every ten, and once more if the agent refuses it. */
+async function ticketNow(force) {
+  if (!force && agent.ticket && agent.expires - Date.now() / 1000 > 120) return agent.ticket;
+  const d = await api(`/api/devices/ticket?device=${encodeURIComponent(agent.device)}`);
+  agent.ticket = d.ticket; agent.expires = d.expires;
+  return agent.ticket;
+}
+async function findAgent() {
+  if (VIA_AGENT) return;
+  let hello;
+  try {
+    const r = await fetch(AGENT_URL + "/api/hello", {signal: AbortSignal.timeout(1500)});
+    hello = await r.json();
+  } catch (e) { agent.state = "none"; return; }
+  agent.device = hello.device;
+  try { await ticketNow(true); }
+  catch (e) {
+    // An agent answered, but for a computer this account did not pair.
+    agent.state = "other"; agent.otherName = agent.device; agent.device = "";
+    return;
+  }
+  agent.state = "found";
+  ON_DEVICE = true;
+  setInterval(() => ticketNow(true).catch(() => {}), 10 * 60 * 1000);
+}
+// local is api() for what lives on this computer: downloads, files, jobs.
+async function local(path, opts) {
+  if (VIA_AGENT) return api(path, opts);
+  if (agent.state !== "found") throw new Error("this computer has no Flamingo helper");
+  for (let tries = 0; ; tries++) {
+    const t = await ticketNow(tries > 0);
+    const r = await fetch(AGENT_URL + path, {...opts, headers: {...(opts && opts.headers), "X-Flamingo-Ticket": t}});
+    if (r.status === 401 && tries === 0) continue;
+    if (!r.ok) throw new Error((await r.json().catch(()=>({}))).error || r.statusText);
+    return r.json();
+  }
+}
+const localPost = (p, body) => local(p, {method:"POST", headers:{"Content-Type":"application/json"},
+                                         body: JSON.stringify(body||{})});
+// localURL is a file's address for <video> and <track>, which cannot send
+// a header: the ticket rides in the address.
+const localURL = path => VIA_AGENT ? path
+  : `${AGENT_URL}${path}?t=${encodeURIComponent(agent.ticket)}`;
 
 function params() {
   const p = new URLSearchParams();
@@ -798,7 +854,7 @@ async function grab(v, btn, audio, height) {
   dismissed.delete(v.id);
   const body = {audio: !!audio, title: v.title};
   if (height != null) body.height = height;
-  try { await post(`/api/get/${v.id}`, body); pollJobs(); }
+  try { await localPost(`/api/get/${v.id}`, body); pollJobs(); }
   catch (e) { btn.disabled = false; btn.textContent = label; alert(e.message); }
 }
 
@@ -871,7 +927,7 @@ function cardMenu(v, el, anchor) {
   if (v.have) item("✕ Delete the file", "The catalog entry stays, so you can download it again", async () => {
     if (!confirm(`Delete the downloaded file for:\n\n${v.title}\n\n` +
                  `The catalog entry stays, so you can re-download later.`)) return;
-    await post(`/api/remove/${v.id}`); refresh();
+    await localPost(`/api/remove/${v.id}`); refresh();
   }, "bad");
 
   document.body.appendChild(m);
@@ -945,8 +1001,25 @@ function open_(v, from) {
   if (v.have) {
     // The file can be gone from the folder since the list was made: then
     // say so and offer to fetch it again, or to stream it.
-    vid.onerror = () => { if (current?.id === v.id) fileMissing(v); };
-    vid.src = `/media/${v.id}`;
+    let renewed = false;
+    vid.onerror = async () => {
+      if (current?.id !== v.id) return;
+      // A ticket that ran out mid-film looks the same as a missing file:
+      // renew it once and carry on from the same second.
+      if (!VIA_AGENT && !renewed) {
+        renewed = true;
+        const t = vid.currentTime;
+        try { await ticketNow(true); } catch (e) { fileMissing(v); return; }
+        if (current?.id !== v.id) return;
+        vid.src = localURL(`/media/${v.id}`);
+        vid.currentTime = t; vid.play().catch(()=>{});
+        return;
+      }
+      fileMissing(v);
+    };
+    // Subtitles from another address need the video to ask politely (CORS).
+    if (VIA_AGENT) vid.removeAttribute("crossorigin"); else vid.crossOrigin = "anonymous";
+    vid.src = localURL(`/media/${v.id}`);
     vid.currentTime = at;
     vid.play().catch(()=>{});
     attachSubs(v.id, vid);
@@ -1447,14 +1520,14 @@ $("#pvideo").addEventListener("seeked", paintChapter);
 
 async function attachSubs(id, vid) {
   let langs = [];
-  try { langs = (await api(`/api/subs/${id}`)).langs || []; } catch (e) { return; }
+  try { langs = (await local(`/api/subs/${id}`)).langs || []; } catch (e) { return; }
   if (current?.id !== id) return;           // player moved on while we waited
   // Attached but off: no `default` track, so the subtitles sit in the player's
   // CC menu until you pick one rather than covering the picture uninvited.
   langs.forEach(lang => {
     const t = document.createElement("track");
     t.kind = "subtitles"; t.label = lang; t.srclang = lang.split("-")[0];
-    t.src = `/subs/${id}/${encodeURIComponent(lang)}`;
+    t.src = localURL(`/subs/${id}/${encodeURIComponent(lang)}`);
     vid.appendChild(t);
   });
   for (const track of vid.textTracks) track.mode = "disabled";
@@ -1517,9 +1590,12 @@ async function openDownloads() {
     ? "Files are found by the [video id] in their names, anywhere inside the " +
       "folder. Point this computer somewhere else and it looks there instead: " +
       "anything left in the old folder shows as not downloaded."
-    : "This page came straight from the server, so it can only stream. To " +
-      "download, open Flamingo through this computer's agent at " +
-      "http://127.0.0.1:8421 (set it up once with: flamingo agent pair).";
+    : agent.state === "other"
+    ? `This computer's helper (${agent.otherName}) is paired to another ` +
+      "account. Pair it to yours with a code below."
+    : "This computer has no Flamingo helper yet, so it can only stream.";
+  $("#dlsetup").hidden = !!dev;
+  if (!dev) setupSheet();
   if (dev) {
     const plat = d.platforms.find(p => p.code === dev.platform);
     $("#dlname").textContent = dev.device + (plat ? ` (${plat.name})` : "");
@@ -1544,7 +1620,11 @@ async function openDownloads() {
     btn.onclick = async () => {
       dlError("");
       btn.disabled = true;
-      try { await post("/api/downloads/platform", {code: p.code, media_dir: inp.value}); btn.textContent = "Saved"; }
+      try {
+        await post("/api/downloads/platform", {code: p.code, media_dir: inp.value});
+        if (!VIA_AGENT && agent.state === "found") await localPost("/api/sync").catch(() => {});
+        btn.textContent = "Saved";
+      }
       catch (e) { dlError(e.message); }
       finally { btn.disabled = false; setTimeout(() => btn.textContent = "Save", 1500); }
       refresh();
@@ -1560,10 +1640,73 @@ $("#dlsave").onclick = async () => {
   btn.disabled = true;
   try {
     await post("/api/downloads/device", {media_dir: $("#dldir").value});
+    // Have the agent look in the new place before the list comes back.
+    if (!VIA_AGENT) await localPost("/api/sync").catch(() => {});
     await openDownloads();
     refresh();
   } catch (e) { dlError(e.message); }
   finally { btn.disabled = false; }
+};
+/* Setting a computer up from the page: download the helper for its system,
+   get a one-time code, run one command. The sheet keeps asking for the
+   helper and reloads once it answers. */
+function myOS() {
+  const p = (navigator.userAgentData?.platform || navigator.platform || navigator.userAgent).toLowerCase();
+  if (p.includes("win")) return "windows";
+  if (p.includes("mac")) return "macos";
+  return "linux";
+}
+function setupCommand(file, code) {
+  const server = location.origin;
+  if (file.endsWith(".exe"))
+    return `& "$env:USERPROFILE\\Downloads\\${file}" agent install --server ${server} --code ${code}`;
+  const mac = file.startsWith("flamingo-macos")
+    ? ` && (xattr -d com.apple.quarantine "$f" 2>/dev/null; true)` : "";
+  return `f=~/Downloads/${file}; chmod +x "$f"${mac} && "$f" agent install --server ${server} --code ${code}`;
+}
+let setupFile = "", setupWatch = null;
+async function setupSheet() {
+  const box = $("#dlagents");
+  box.replaceChildren();
+  let list = [];
+  try { list = (await api("/api/devices/agents")).agents; } catch (e) {}
+  if (!list.length) {
+    box.textContent = "this server has no helper builds yet (they come with the Docker image).";
+  }
+  const os = myOS();
+  setupFile = (list.find(a => a.os === os) || list[0] || {}).file || "";
+  for (const a of list) {
+    const l = document.createElement("a");
+    l.href = `/download/agent/${a.file}`; l.download = a.file;
+    l.textContent = `${a.name} · ${fmtSize(a.size)}`;
+    l.classList.toggle("mine", a.file === setupFile);
+    l.onclick = () => { setupFile = a.file; for (const x of box.children) x.classList.toggle("mine", x === l); };
+    box.appendChild(l);
+  }
+  $("#dlrun").hidden = true;
+  $("#dlcodenote").textContent = "then run what appears here in a terminal.";
+  // Watch for the helper while the sheet is open.
+  clearInterval(setupWatch);
+  setupWatch = setInterval(async () => {
+    if (!$("#dlmodal").classList.contains("on")) { clearInterval(setupWatch); return; }
+    agent.state = "looking";
+    await findAgent();
+    if (agent.state === "found") { clearInterval(setupWatch); location.reload(); }
+  }, 3000);
+}
+$("#dlcode").onclick = async () => {
+  dlError("");
+  let d;
+  try { d = await post("/api/devices/pair-code"); } catch (e) { dlError(e.message); return; }
+  $("#dlcmd").textContent = setupCommand(setupFile || "flamingo-linux-amd64", d.code);
+  $("#dlrun").hidden = false;
+  $("#dlcodenote").textContent = `Code ${d.code} works once, for 5 minutes. ` +
+    (setupFile.endsWith(".exe") ? "Run it in PowerShell:" : "Run it in a terminal:");
+};
+$("#dlcopy").onclick = async () => {
+  try { await navigator.clipboard.writeText($("#dlcmd").textContent); $("#dlcopy").textContent = "Copied"; }
+  catch (e) { $("#dlcopy").textContent = "Select and copy"; }
+  setTimeout(() => $("#dlcopy").textContent = "Copy", 1500);
 };
 $("#dlcfg").onclick = openDownloads;
 $("#dldone").onclick = closeDownloads;
@@ -1979,12 +2122,17 @@ const dismissed = new Set();
 const fading = new Map();
 const AUTO_DISMISS_MS = 4000;
 
+// A finished card goes from the server's list and, for a download, from
+// this computer's agent's.
+function clearJob(id) {
+  post("/api/jobs/clear", {id}).catch(() => {});
+  if (!VIA_AGENT && agent.state === "found") localPost("/api/jobs/clear", {id}).catch(() => {});
+}
 function dismissJob(j) {
   dismissed.add(j.id);
   clearTimeout(fading.get(j.id));
   fading.delete(j.id);
-  if (j.state !== "queued" && j.state !== "running")
-    post("/api/jobs/clear", {id: j.id}).catch(() => {});
+  if (j.state !== "queued" && j.state !== "running") clearJob(j.id);
   renderJobs(lastJobs);
 }
 function renderJobs(jobs) {
@@ -2002,7 +2150,7 @@ function renderJobs(jobs) {
   // A job dismissed while running is reaped once it settles.
   for (const j of jobs)
     if (dismissed.has(j.id) && j.state !== "queued" && j.state !== "running")
-      post("/api/jobs/clear", {id: j.id}).catch(() => {});
+      clearJob(j.id);
 
   // A source that has just finished cataloguing is the view you asked for.
   const waited = pendingSource && jobs.find(j => j.id === pendingSource);
@@ -2049,6 +2197,13 @@ function dismissAllJobs() {
 }
 async function pollJobs() {
   const d = await api("/api/jobs");
+  // Through the agent its list already holds both; otherwise add this
+  // computer's downloads to the server's cards.
+  if (!VIA_AGENT && agent.state === "found") {
+    const mine = await local("/api/jobs").catch(() => ({jobs: []}));
+    const seen = new Set(d.jobs.map(j => j.id));
+    d.jobs = d.jobs.concat(mine.jobs.filter(j => !seen.has(j.id)));
+  }
   const wasBusy = d.jobs.some(j => j.state === "queued" || j.state === "running");
   renderJobs(d.jobs);
   if (!wasBusy) refresh();
@@ -2076,7 +2231,7 @@ function toggle(id, key) {
   };
 }
 toggle("#f-have", "have");
-if (!ON_DEVICE) $("#f-have").hidden = true;
+$("#f-have").hidden = !ON_DEVICE;
 toggle("#f-starred", "starred"); toggle("#f-unwatched", "unwatched");
 toggle("#f-hidden", "hidden");
 
@@ -2103,3 +2258,18 @@ togglPoll();
 addEventListener("popstate", () => { restoreFromUrl(); refresh(); });
 
 refresh();
+// The page shows at once, streaming; once this computer's agent answers,
+// it shows again with what is on disk and the download menus.
+findAgent().then(() => {
+  if (agent.state !== "found") {
+    if (!VIA_AGENT) {
+      $("#dlcfg").textContent = "⬇ set up downloads";
+      $("#dlcfg").title = "This computer has no Flamingo helper yet: set it up to download";
+    }
+    return;
+  }
+  $("#f-have").hidden = false;
+  restoreFromUrl();
+  refresh();
+  pollJobs().catch(() => {});
+});

@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -223,4 +225,20 @@ func TestPairCodeAndTickets(t *testing.T) {
 	eq(t, "someone else's computer", got["device"], nil)
 	code, _ = ana.do("POST", "/api/downloads/device", map[string]string{"media_dir": "/x"})
 	eq(t, "folder on someone else's computer", code, 400)
+
+	// The helper for each system: only the builds present, only by name.
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "flamingo-linux-amd64"), []byte("ELF!"), 0o755)
+	s.cfg.Storage.AgentsDir = dir
+	_, got = bob.do("GET", "/api/devices/agents", nil)
+	list, _ := got["agents"].([]any)
+	if len(list) != 1 || list[0].(map[string]any)["os"] != "linux" {
+		t.Errorf("agents = %v", got)
+	}
+	r, body := get(t, bob.http, ts.URL+"/download/agent/flamingo-linux-amd64")
+	eq(t, "download", []any{r.StatusCode, body}, []any{200, "ELF!"})
+	r, _ = get(t, bob.http, ts.URL+"/download/agent/..%2Fsecret")
+	eq(t, "other file", r.StatusCode, 404)
+	r, _ = get(t, bob.http, ts.URL+"/download/agent/flamingo-windows-amd64.exe")
+	eq(t, "missing build", r.StatusCode, 404)
 }

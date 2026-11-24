@@ -30,10 +30,10 @@ func agentCmd() *cobra.Command {
 	var path string
 	cmd := &cobra.Command{
 		Use:   "agent",
-		Short: "This computer's helper: downloads, local playback, and the page at 127.0.0.1:8421",
+		Short: "This computer's helper: downloads and playing them, for the Flamingo page",
 	}
 	cmd.PersistentFlags().StringVar(&path, "agent-config", config.AgentPath(), "agent config file")
-	cmd.AddCommand(agentPairCmd(&path), agentRunCmd(&path))
+	cmd.AddCommand(agentPairCmd(&path), agentRunCmd(&path), agentInstallCmd(&path))
 	return cmd
 }
 
@@ -107,32 +107,12 @@ user name and password.`,
 				}
 				req["user"], req["password"] = user, pw
 			}
-			body, _ := json.Marshal(req)
-			client := &http.Client{Timeout: 30 * time.Second}
-			resp, err := client.Post(cfg.ServerURL+"/api/agent/pair", "application/json", bytes.NewReader(body))
+			device, err := pairWith(*path, cfg, req)
 			if err != nil {
-				return fmt.Errorf("reaching %s: %w", cfg.ServerURL, err)
-			}
-			defer resp.Body.Close()
-			var out struct{ Device, Token, Error string }
-			_ = json.NewDecoder(io.LimitReader(resp.Body, 64<<10)).Decode(&out)
-			if resp.StatusCode != http.StatusOK || out.Token == "" {
-				if out.Error == "" {
-					out.Error = resp.Status
-				}
-				return errors.New("pairing refused: " + out.Error)
-			}
-			if err := os.MkdirAll(filepath.Dir(cfg.TokenFile), 0o700); err != nil {
 				return err
 			}
-			if err := os.WriteFile(cfg.TokenFile, []byte(out.Token+"\n"), 0o600); err != nil {
-				return err
-			}
-			if err := config.SaveAgent(*path, cfg); err != nil {
-				return err
-			}
-			fmt.Fprintf(cmd.OutOrStdout(), "paired %q with %s\nnext: flamingo agent run, then open http://%s\n",
-				out.Device, cfg.ServerURL, cfg.Listen)
+			fmt.Fprintf(cmd.OutOrStdout(), "paired %q with %s\nnext: flamingo agent run, then open %s\n",
+				device, cfg.ServerURL, cfg.ServerURL)
 			return nil
 		},
 	}
@@ -142,6 +122,33 @@ user name and password.`,
 	cmd.Flags().StringVar(&code, "code", "", "a one-time pairing code from the app, instead of a password")
 	cmd.Flags().BoolVar(&pwStdin, "password-stdin", false, "read the password from standard input")
 	return cmd
+}
+
+// pairWith trades a login or a one-time code (req) for this computer's
+// key, then keeps the key and the settings.
+func pairWith(path string, cfg *config.Agent, req map[string]string) (string, error) {
+	body, _ := json.Marshal(req)
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Post(cfg.ServerURL+"/api/agent/pair", "application/json", bytes.NewReader(body))
+	if err != nil {
+		return "", fmt.Errorf("reaching %s: %w", cfg.ServerURL, err)
+	}
+	defer resp.Body.Close()
+	var out struct{ Device, Token, Error string }
+	_ = json.NewDecoder(io.LimitReader(resp.Body, 64<<10)).Decode(&out)
+	if resp.StatusCode != http.StatusOK || out.Token == "" {
+		if out.Error == "" {
+			out.Error = resp.Status
+		}
+		return "", errors.New("pairing refused: " + out.Error)
+	}
+	if err := os.MkdirAll(filepath.Dir(cfg.TokenFile), 0o700); err != nil {
+		return "", err
+	}
+	if err := os.WriteFile(cfg.TokenFile, []byte(out.Token+"\n"), 0o600); err != nil {
+		return "", err
+	}
+	return out.Device, config.SaveAgent(path, cfg)
 }
 
 // askOnce reads a password: without echo on a terminal, or one line of

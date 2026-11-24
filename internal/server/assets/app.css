@@ -638,3 +638,15 @@ body.hasfold #jobs { bottom:62px; }
 .vbtn.done { background:rgba(127,212,168,.12); color:var(--ok); border-color:var(--ok); }
 .vbtn.done.quiet { background:transparent; color:var(--dim); border-color:var(--slate); }
 #tgtoken { -webkit-text-security:disc; text-security:disc; font-family:monospace; }
+
+/* Downloads → set up this computer */
+#dlsetup .steps { margin:6px 0 14px; padding-left:20px; display:flex; flex-direction:column; gap:12px;
+  font-size:13.5px; }
+#dlsetup .steps li::marker { color:var(--warm); font-weight:800; }
+#dlagents { display:flex; flex-wrap:wrap; gap:6px; margin-top:6px; }
+#dlagents a { padding:5px 10px; border:1px solid var(--edge); border-radius:8px; color:var(--ink);
+  text-decoration:none; font-size:12.5px; }
+#dlagents a.mine { border-color:var(--accent); color:var(--accent); font-weight:700; }
+#dlrun { display:flex; gap:6px; align-items:flex-start; margin-top:8px; }
+#dlcmd { flex:1; margin:0; padding:8px 10px; background:var(--bg); border:1px solid var(--edge);
+  border-radius:8px; font-size:12px; white-space:pre-wrap; word-break:break-all; color:var(--ink); }

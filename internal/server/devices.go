@@ -8,6 +8,8 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
@@ -99,6 +101,8 @@ func (s *Server) routesDevices(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/agent/pair", s.apiPair)
 	mux.HandleFunc("POST /api/devices/pair-code", s.requireUser(s.apiPairCode))
 	mux.HandleFunc("GET /api/devices/ticket", s.requireUser(s.apiTicket))
+	mux.HandleFunc("GET /api/devices/agents", s.requireUser(s.apiAgents))
+	mux.HandleFunc("GET /download/agent/{file}", s.requireUser(s.downloadAgent))
 	mux.HandleFunc("GET /api/agent/config", s.requireDevice(s.apiAgentConfig))
 	mux.HandleFunc("PUT /api/agent/inventory", s.requireDevice(s.apiInventory))
 	mux.HandleFunc("GET /api/downloads", s.requireUser(s.apiDownloads))
@@ -275,6 +279,44 @@ func (s *Server) apiTicket(w http.ResponseWriter, r *http.Request) {
 		"ticket":  ticket.Sign(key, ticket.Claims{Device: name, User: u.ID, Expiry: exp}),
 		"expires": exp,
 	})
+}
+
+// --- the agent, built for each system --------------------------------------
+
+// agentBuilds are the files the Docker image carries, by system.
+var agentBuilds = []struct{ OS, Name, File string }{
+	{"linux", "Linux", "flamingo-linux-amd64"},
+	{"windows", "Windows", "flamingo-windows-amd64.exe"},
+	{"macos", "macOS (Apple silicon)", "flamingo-macos-arm64"},
+	{"macos-intel", "macOS (Intel)", "flamingo-macos-amd64"},
+}
+
+// apiAgents lists the agent downloads this server actually has.
+func (s *Server) apiAgents(w http.ResponseWriter, r *http.Request) {
+	out := []map[string]any{}
+	for _, b := range agentBuilds {
+		fi, err := os.Stat(filepath.Join(s.cfg.Storage.AgentsDir, b.File))
+		if err != nil || !fi.Mode().IsRegular() {
+			continue
+		}
+		out = append(out, map[string]any{"os": b.OS, "name": b.Name, "file": b.File, "size": fi.Size()})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"agents": out})
+}
+
+// downloadAgent hands over one system's agent. Only the names above, so
+// the path can never leave the folder.
+func (s *Server) downloadAgent(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("file")
+	for _, b := range agentBuilds {
+		if b.File == name {
+			w.Header().Set("Content-Disposition", `attachment; filename="`+b.File+`"`)
+			w.Header().Set("Content-Type", "application/octet-stream")
+			http.ServeFile(w, r, filepath.Join(s.cfg.Storage.AgentsDir, b.File))
+			return
+		}
+	}
+	http.NotFound(w, r)
 }
 
 // --- the agent's own calls ------------------------------------------------

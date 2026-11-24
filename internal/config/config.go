@@ -34,6 +34,9 @@ type Database struct {
 
 type Storage struct {
 	ThumbsDir string `mapstructure:"thumbs_dir"`
+	// AgentsDir holds the agent built for each system, offered in the app
+	// to set up downloads on a computer. Missing: the app says so.
+	AgentsDir string `mapstructure:"agents_dir"`
 }
 
 type Auth struct {
@@ -66,6 +69,7 @@ func defaults(v *viper.Viper) {
 	v.SetDefault("database.url", "")
 	v.SetDefault("database.migrate_on_start", true)
 	v.SetDefault("storage.thumbs_dir", "./data/thumbs")
+	v.SetDefault("storage.agents_dir", "/usr/local/share/flamingo/agents")
 	v.SetDefault("auth.session_ttl", "720h")
 	v.SetDefault("auth.secret_key_file", "")
 	v.SetDefault("auth.signup", "invite")

@@ -156,6 +156,18 @@
 <div id="dlmodal" class="sheet"><div class="box wide">
   <h3>Downloads</h3>
   <div class="who hint" id="dlhint"></div>
+  <div id="dlsetup" hidden>
+    <div class="dlsec">Set up downloads on this computer</div>
+    <ol class="steps">
+      <li>Download the helper for this computer:
+        <span id="dlagents"></span></li>
+      <li><button class="act primary" id="dlcode">Get a pairing code</button>
+        <span class="hint" id="dlcodenote">then run what appears here in a terminal.</span>
+        <div id="dlrun" hidden><pre id="dlcmd"></pre>
+          <button class="act" id="dlcopy">Copy</button></div></li>
+      <li>That's it: this page turns downloads on by itself once the helper answers.</li>
+    </ol>
+  </div>
   <div id="dlthis" hidden>
     <div class="dlsec">This computer · <span id="dlname"></span></div>
     <div class="mk"><input id="dldir" spellcheck="false" autocomplete="off">
