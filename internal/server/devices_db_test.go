@@ -73,26 +73,35 @@ func TestDevicesAndFolders(t *testing.T) {
 		{"id": tV2, "size": 5, "audio": true}, {"id": "zzzzzzzzzzz", "size": 1}, {"id": tV2, "size": 9}}})
 	eq(t, "inventory", []any{code, got["files"], got["known"]}, []any{200, 2, 1})
 
-	// Bob's page through the laptop's agent sees v2 on disk, as sound only;
-	// through no agent, nothing is on disk.
+	// Bob's page on the laptop sees v2 on disk, as sound only; a page that
+	// names no computer sees nothing on disk.
 	bob := signIn(t, ts.URL, "bob")
-	bob.token = tok
+	bob.device = "laptop"
 	var v2 map[string]any
 	for _, v := range bob.state("")["videos"].([]any) {
 		if m := v.(map[string]any); m["id"] == tV2 {
 			v2 = m
 		}
 	}
-	eq(t, "v2 via laptop", []any{v2["have"], v2["audio"]}, []any{true, true})
-	bob.token = ""
+	eq(t, "v2 on the laptop", []any{v2["have"], v2["audio"]}, []any{true, true})
+	bob.device = ""
 	for _, v := range bob.state("")["videos"].([]any) {
 		if m := v.(map[string]any); m["have"] == true {
 			t.Errorf("on disk without an agent: %v", m["id"])
 		}
 	}
-	_, page := get(t, bob.http, ts.URL+"/")
-	if !strings.Contains(page, `data-device=""`) {
-		t.Error("the page offered downloads without an agent")
+	// A token sent by a browser counts for nothing: only the page's name.
+	req, _ := http.NewRequest("GET", ts.URL+"/api/state", nil)
+	req.Header.Set(deviceHeader, tok)
+	if resp, err := bob.http.Do(req); err == nil {
+		var st map[string]any
+		_ = json.NewDecoder(resp.Body).Decode(&st)
+		resp.Body.Close()
+		for _, v := range st["videos"].([]any) {
+			if m := v.(map[string]any); m["have"] == true {
+				t.Errorf("on disk by a browser-sent token: %v", m["id"])
+			}
+		}
 	}
 
 	// Another report replaces the list.
@@ -102,7 +111,7 @@ func TestDevicesAndFolders(t *testing.T) {
 	eq(t, "emptied", n, 0)
 
 	// Folders: only an admin moves a platform's default…
-	bob.token = tok
+	bob.device = "laptop"
 	code, _ = bob.do("POST", "/api/downloads/platform", map[string]string{"code": "MACOS", "media_dir": "/x"})
 	eq(t, "member sets default", code, 403)
 	ana := signIn(t, ts.URL, "ana")
@@ -121,7 +130,7 @@ func TestDevicesAndFolders(t *testing.T) {
 		[]any{200, 3, false, "/Volumes/ext/F"})
 	code, got = bob.do("POST", "/api/downloads/device", map[string]string{"media_dir": ""})
 	eq(t, "back to default", []any{code, got["media_dir"], got["own"]}, []any{200, "~/Media/F", false})
-	bob.token = ""
+	bob.device = ""
 	code, _ = bob.do("POST", "/api/downloads/device", map[string]string{"media_dir": "/x"})
 	eq(t, "own folder without agent", code, 400)
 
@@ -147,7 +156,6 @@ func TestPairCodeAndTickets(t *testing.T) {
 		t.Fatal(err)
 	}
 	bob := signIn(t, ts.URL, "bob")
-	bob.token = ""
 
 	// A code only for the signed in.
 	code, _ := agentCall(t, ts.URL, "", "POST", "/api/devices/pair-code", nil)
@@ -193,7 +201,6 @@ func TestPairCodeAndTickets(t *testing.T) {
 		t.Fatalf("ticket check: %v %+v", err, c)
 	}
 	ana := signIn(t, ts.URL, "ana")
-	ana.token = ""
 	code, _ = ana.do("GET", "/api/devices/ticket?device=laptop", nil)
 	eq(t, "ticket for someone else's computer", code, 404)
 	code, _ = bob.do("GET", "/api/devices/ticket?device=nowhere", nil)

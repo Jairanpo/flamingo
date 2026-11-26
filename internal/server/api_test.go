@@ -42,17 +42,15 @@ func seed(t *testing.T, pool *pgxpool.Pool) {
 }
 
 type client struct {
-	t     *testing.T
-	base  string
-	http  *http.Client
-	token string // the device token an agent would add; "" for none
-	// device is the computer a page names when it talks to the server
-	// itself, having found that computer's agent.
+	t    *testing.T
+	base string
+	http *http.Client
+	// device is the computer a page names, having found its agent there.
 	device string
 }
 
 func signIn(t *testing.T, base, name string) *client {
-	c := &client{t: t, base: base, http: browser(t), token: "desk-token"}
+	c := &client{t: t, base: base, http: browser(t)}
 	r := post(t, c.http, base+"/login", url.Values{"name": {name}, "password": {"secret-pass"}}, "")
 	if r.StatusCode != http.StatusSeeOther {
 		t.Fatalf("sign in %s: %d", name, r.StatusCode)
@@ -70,9 +68,6 @@ func (c *client) do(method, path string, body any) (int, map[string]any) {
 		rd = bytes.NewReader(nil)
 	}
 	req, _ := http.NewRequest(method, c.base+path, rd)
-	if c.token != "" {
-		req.Header.Set(deviceHeader, c.token)
-	}
 	if c.device != "" {
 		req.Header.Set(pageDeviceHeader, c.device)
 	}
@@ -131,6 +126,11 @@ func TestLibraryAPI(t *testing.T) {
 		}
 	}
 	a, b := signIn(t, ts.URL, "ana"), signIn(t, ts.URL, "bob")
+	// Ana's page is on her desk computer, where v1 is downloaded.
+	if _, err := pool.Exec(ctx, `UPDATE devices SET user_id = $1 WHERE devi_name = 'desk'`, ana.ID); err != nil {
+		t.Fatal(err)
+	}
+	a.device = "desk"
 
 	// Everything holds the union of Ana's sources, newest first.
 	st := a.state("")

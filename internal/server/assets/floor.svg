@@ -2,9 +2,9 @@
 <!-- The dashboard's grid floor, drawn once as a picture: a live 3D plane
      cost the page half its frame rate. -->
 <style>line{vector-effect:non-scaling-stroke}</style><defs><linearGradient id="f" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="420">
-<stop offset="0" stop-color="#EB9FEF" stop-opacity="0"/>
-<stop offset=".35" stop-color="#EB9FEF" stop-opacity=".22"/>
-<stop offset="1" stop-color="#EB9FEF" stop-opacity=".34"/></linearGradient></defs>
+<stop offset="0" stop-color="#D9A53A" stop-opacity="0"/>
+<stop offset=".35" stop-color="#D9A53A" stop-opacity=".22"/>
+<stop offset="1" stop-color="#D9A53A" stop-opacity=".34"/></linearGradient></defs>
 <g stroke="url(#f)" stroke-width="1.5" fill="none">
 <line x1="264" y1="0" x2="-2040" y2="420"/>
 <line x1="278" y1="0" x2="-1930" y2="420"/>

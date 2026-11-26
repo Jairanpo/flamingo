@@ -77,23 +77,32 @@ sudo scripts/set-toggl.sh jair        # --workspace ID, or --clear to disconnect
 ## Downloads: the agent on each computer
 
 The server never touches a computer's disk. Each computer that should keep
-downloads runs the **agent**: it shows the page at `http://127.0.0.1:8421`,
-passes calls on to the server, and downloads (video or sound only), keeps
-and plays the files. It needs `yt-dlp` and `ffmpeg` installed.
+downloads runs the **agent**, a small background helper at
+`127.0.0.1:8421` with no page of its own. You always open Flamingo at the
+server's address; the page finds the agent on its computer, gets a
+short-lived ticket for it from the server, and asks it directly to download
+(video or sound only), delete and play files. A computer without an agent,
+like a phone, streams.
 
-Where files go is set in the app (⬇ folders): one default per system
-(Linux, macOS, Windows), and optionally a folder of this computer's own.
-Files are found by the `[video id]` in their names, anywhere in the folder.
+**Setting a computer up:** in the app, ⬇ set up downloads. Pick the system
+(Linux, macOS, Windows), download the helper, install `yt-dlp` and
+`ffmpeg` once, then get a one-time pairing code and run the one command the
+page shows. That is `flamingo agent install --server <address> --code
+<code>`: it keeps the program (`~/.local/bin`, Application Support, or
+`%LOCALAPPDATA%\Flamingo`), pairs the computer and starts the agent at
+every login. The page turns downloads on by itself once it answers.
 
-```sh
-go build -o ~/.local/bin/flamingo ./cmd/flamingo
-~/.local/bin/flamingo agent pair --server http://127.0.0.1:8430   # once
-scripts/install-agent.sh   # starts it now and at every login (no sudo)
-```
+On this machine, from the repository: `scripts/install-agent.sh` builds and
+reinstalls it (no sudo; already paired, so no code).
 
-On another computer, use the server's LAN address in `--server`. Pairing
-the same name again replaces its key. The agent's settings live in
-`~/.config/flamingo/agent.yaml`; logs: `journalctl --user -u flamingo-agent`.
+Where files go is set in the app (⬇ folders): one default per system, and
+optionally a folder of this computer's own. Files are found by the
+`[video id]` in their names, anywhere in the folder.
+
+The agent's settings live in `~/.config/flamingo/agent.yaml`. If the page
+is opened at an address other than `server_url` (a cloud server behind its
+own name), list it under `page_origins`. Logs: `journalctl --user -u
+flamingo-agent`.
 
 ## Tests
 

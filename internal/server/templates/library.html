@@ -7,7 +7,7 @@
 <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/assets/app.css">
 </head>
-<body data-device="{{.Device}}">
+<body>
 <header>
 <div class="hrow top">
   <div class="brand">Flamingo<span>·</span></div>
@@ -158,15 +158,15 @@
   <div class="who hint" id="dlhint"></div>
   <div id="dlsetup" hidden>
     <div class="dlsec">Set up downloads on this computer</div>
-    <ol class="steps">
-      <li>Download the helper for this computer:
-        <span id="dlagents"></span></li>
-      <li><button class="act primary" id="dlcode">Get a pairing code</button>
-        <span class="hint" id="dlcodenote">then run what appears here in a terminal.</span>
-        <div id="dlrun" hidden><pre id="dlcmd"></pre>
-          <button class="act" id="dlcopy">Copy</button></div></li>
-      <li>That's it: this page turns downloads on by itself once the helper answers.</li>
-    </ol>
+    <div class="ostabs" id="dlos" role="tablist" aria-label="This computer's system"></div>
+    <ol class="steps" id="dlsteps"></ol>
+    <!-- Moved into the pairing step by app.js. -->
+    <div id="dlpair">
+      <button class="act primary" id="dlcode">Get a pairing code</button>
+      <span class="hint" id="dlcodenote"></span>
+      <div class="cmd" id="dlrun" hidden><pre id="dlcmd"></pre>
+        <button class="act" id="dlcopy">Copy</button></div>
+    </div>
   </div>
   <div id="dlthis" hidden>
     <div class="dlsec">This computer · <span id="dlname"></span></div>

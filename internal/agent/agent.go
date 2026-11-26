@@ -10,8 +10,6 @@ import (
 	"log/slog"
 	"mime"
 	"net/http"
-	"net/http/httptest"
-	"net/http/httputil"
 	"net/url"
 	"os"
 	"regexp"
@@ -50,7 +48,6 @@ type Agent struct {
 
 	server *url.URL
 	client *http.Client
-	proxy  *httputil.ReverseProxy
 	index  Index
 	dl     *Downloader
 
@@ -60,7 +57,6 @@ type Agent struct {
 	lastSent time.Time
 	syncMu   sync.Mutex
 
-	users userCache
 	// origins are the page addresses allowed to call this agent from
 	// another address: the server's own, and any in page_origins.
 	origins map[string]bool
@@ -76,23 +72,6 @@ func New(cfg *config.Agent, token string, log *slog.Logger) (*Agent, error) {
 		client:  &http.Client{Timeout: 30 * time.Second},
 		origins: pageOrigins(u, cfg.PageOrigins),
 		key:     ticket.KeyOf(token)}
-	a.proxy = &httputil.ReverseProxy{
-		Rewrite: func(pr *httputil.ProxyRequest) {
-			pr.SetURL(u)
-			// The server checks a form's Origin against the Host it was
-			// sent to: keep the browser's, 127.0.0.1:8421.
-			pr.Out.Host = pr.In.Host
-			// Only this agent vouches for the computer; never the browser.
-			pr.Out.Header.Del(DeviceHeader)
-			pr.Out.Header.Set(DeviceHeader, token)
-		},
-		// Streams relay video for minutes; a flush per write keeps them live.
-		FlushInterval: -1,
-		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
-			a.Log.Warn("server unreachable", "path", r.URL.Path, "err", err)
-			http.Error(w, "the Flamingo server is not answering", http.StatusBadGateway)
-		},
-	}
 	a.dl = &Downloader{
 		YT:       ytdlp.Runner{Path: cfg.Ytdlp.Path, ExtraArgs: cfg.Ytdlp.ExtraArgs},
 		Index:    &a.index,
@@ -114,8 +93,8 @@ func (a *Agent) mediaDir() (string, error) {
 	return dir, nil
 }
 
-// Run serves the page and keeps the server's list of this computer's files
-// current until ctx ends.
+// Run answers the Flamingo page and keeps the server's list of this
+// computer's files current until ctx ends.
 func (a *Agent) Run(ctx context.Context) error {
 	a.dl.Start(ctx, a.Cfg.Download.Workers)
 	go a.loop(ctx)
@@ -235,23 +214,29 @@ func (a *Agent) call(ctx context.Context, method, path string, in, out any) erro
 
 func (a *Agent) Handler() http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /api/get/{vid}", a.signedIn(a.apiGet))
-	mux.HandleFunc("POST /api/remove/{vid}", a.signedIn(a.apiRemove))
-	mux.HandleFunc("GET /media/{vid}", a.signedIn(a.media))
-	mux.HandleFunc("GET /api/subs/{vid}", a.signedIn(a.apiSubs))
-	mux.HandleFunc("GET /subs/{vid}/{lang}", a.signedIn(a.subs))
-	mux.HandleFunc("GET /api/jobs", a.signedIn(a.apiJobs))
-	mux.HandleFunc("POST /api/jobs/clear", a.signedIn(a.apiJobsClear))
-	// For a page served by the server itself: is there an agent here, and
-	// for which computer? Then, after a folder change, look again.
+	mux.HandleFunc("POST /api/get/{vid}", a.ticketed(a.apiGet))
+	mux.HandleFunc("POST /api/remove/{vid}", a.ticketed(a.apiRemove))
+	mux.HandleFunc("GET /media/{vid}", a.ticketed(a.media))
+	mux.HandleFunc("GET /api/subs/{vid}", a.ticketed(a.apiSubs))
+	mux.HandleFunc("GET /subs/{vid}/{lang}", a.ticketed(a.subs))
+	mux.HandleFunc("GET /api/jobs", a.ticketed(a.apiJobs))
+	mux.HandleFunc("POST /api/jobs/clear", a.ticketed(a.apiJobsClear))
+	// Is there an agent here, and for which computer? Then, after a folder
+	// change in the app, look again.
 	mux.HandleFunc("GET /api/hello", a.apiHello)
-	mux.HandleFunc("POST /api/sync", a.signedIn(a.apiSync))
-	// A folder changed in the app: look in the new place before answering,
-	// so the page's next refresh already shows what is there.
-	mux.HandleFunc("POST /api/downloads/device", a.thenSync)
-	mux.HandleFunc("POST /api/downloads/platform", a.thenSync)
-	mux.Handle("/", a.proxy)
+	mux.HandleFunc("POST /api/sync", a.ticketed(a.apiSync))
+	// The agent has no page of its own any more: an old bookmark to it
+	// lands on the same view at the server.
+	mux.HandleFunc("GET /", a.toServer)
 	return a.cors(a.sameOrigin(mux))
+}
+
+func (a *Agent) toServer(w http.ResponseWriter, r *http.Request) {
+	if strings.HasPrefix(r.URL.Path, "/api/") {
+		http.NotFound(w, r)
+		return
+	}
+	http.Redirect(w, r, a.Cfg.ServerURL+r.URL.RequestURI(), http.StatusFound)
 }
 
 // pageOrigins is the set of page addresses allowed in: the server's own,
@@ -320,19 +305,6 @@ func (a *Agent) apiSync(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
-func (a *Agent) thenSync(w http.ResponseWriter, r *http.Request) {
-	rec := httptest.NewRecorder()
-	a.proxy.ServeHTTP(rec, r)
-	if rec.Code == http.StatusOK {
-		a.sync(r.Context(), true)
-	}
-	for k, v := range rec.Header() {
-		w.Header()[k] = v
-	}
-	w.WriteHeader(rec.Code)
-	_, _ = w.Write(rec.Body.Bytes())
-}
-
 func writeJSON(w http.ResponseWriter, code int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
@@ -344,75 +316,30 @@ func fail(w http.ResponseWriter, code int, msg string) {
 	writeJSON(w, code, map[string]string{"error": msg})
 }
 
-// userCache remembers which session cookies the server accepted, so local
-// routes (a seek in a video is many requests) don't each ask the server.
-type userCache struct {
-	mu sync.Mutex
-	ok map[string]time.Time
-}
-
-func (c *userCache) fresh(key string) bool {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	t, ok := c.ok[key]
-	return ok && time.Since(t) < time.Minute
-}
-
-func (c *userCache) remember(key string) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.ok == nil || len(c.ok) > 256 {
-		c.ok = map[string]time.Time{}
-	}
-	c.ok[key] = time.Now()
-}
-
-// signedIn lets a request reach this computer's files only when the server
-// says its cookie belongs to a signed-in user.
-//
-// A page served by the server itself shows a ticket instead, which the
-// agent checks on its own.
-func (a *Agent) signedIn(next http.HandlerFunc) http.HandlerFunc {
+// ticketed lets a request reach this computer's files only with a ticket
+// the server wrote for this computer (package ticket): in the
+// X-Flamingo-Ticket header, or in ?t= for a video or subtitle address.
+func (a *Agent) ticketed(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		tk := r.Header.Get(TicketHeader)
 		if tk == "" {
 			tk = r.URL.Query().Get("t")
 		}
-		if tk != "" {
-			if _, err := ticket.Verify(a.key, a.Cfg.DeviceName, tk, time.Now()); err != nil {
-				fail(w, http.StatusUnauthorized, "ticket refused: "+strings.TrimPrefix(err.Error(), "ticket: "))
-				return
-			}
-			next(w, r)
+		if tk == "" {
+			fail(w, http.StatusUnauthorized, "a ticket from the Flamingo page is needed")
 			return
 		}
-		cookie := r.Header.Get("Cookie")
-		if cookie == "" || !a.users.fresh(cookie) {
-			req, _ := http.NewRequestWithContext(r.Context(), "GET", a.Cfg.ServerURL+"/api/me", nil)
-			req.Header.Set("Cookie", cookie)
-			req.Header.Set(DeviceHeader, a.Token)
-			resp, err := a.client.Do(req)
-			if err != nil {
-				fail(w, http.StatusBadGateway, "the Flamingo server is not answering")
-				return
-			}
-			resp.Body.Close()
-			if resp.StatusCode != http.StatusOK {
-				if strings.HasPrefix(r.URL.Path, "/api/") {
-					fail(w, http.StatusUnauthorized, "sign in first")
-				} else {
-					http.Redirect(w, r, "/login?next="+url.QueryEscape(r.URL.RequestURI()), http.StatusSeeOther)
-				}
-				return
-			}
-			a.users.remember(cookie)
+		if _, err := ticket.Verify(a.key, a.Cfg.DeviceName, tk, time.Now()); err != nil {
+			fail(w, http.StatusUnauthorized, "ticket refused: "+strings.TrimPrefix(err.Error(), "ticket: "))
+			return
 		}
 		next(w, r)
 	}
 }
 
-// sameOrigin refuses state-changing requests from another site's page, as
-// the server does: this port is reachable by any page the browser opens.
+// sameOrigin refuses state-changing requests from any page but Flamingo's:
+// this port is reachable by every page the browser opens. A program on
+// this computer (no Origin, no Sec-Fetch-Site) is not a browser page.
 func (a *Agent) sameOrigin(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
@@ -421,11 +348,11 @@ func (a *Agent) sameOrigin(next http.Handler) http.Handler {
 			return
 		}
 		if origin := r.Header.Get("Origin"); origin != "" {
-			if o, err := url.Parse(origin); (err != nil || o.Host != r.Host) && !a.origins[strings.ToLower(origin)] {
+			if !a.origins[strings.ToLower(origin)] {
 				http.Error(w, "cross-site request refused", http.StatusForbidden)
 				return
 			}
-		} else if site := r.Header.Get("Sec-Fetch-Site"); site != "" && site != "same-origin" && site != "none" {
+		} else if site := r.Header.Get("Sec-Fetch-Site"); site != "" && site != "none" {
 			http.Error(w, "cross-site request refused", http.StatusForbidden)
 			return
 		}
@@ -510,40 +437,21 @@ func (a *Agent) subs(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w, r, p)
 }
 
-// apiJobs is the server's cards (sources being added) plus this
-// computer's downloads, in one list.
+// apiJobs is this computer's download cards; the page adds the server's.
 func (a *Agent) apiJobs(w http.ResponseWriter, r *http.Request) {
-	var out struct {
-		Jobs []any `json:"jobs"`
-	}
-	req, _ := http.NewRequestWithContext(r.Context(), "GET", a.Cfg.ServerURL+"/api/jobs", nil)
-	req.Header.Set("Cookie", r.Header.Get("Cookie"))
-	req.Header.Set(DeviceHeader, a.Token)
-	if resp, err := a.client.Do(req); err == nil {
-		if resp.StatusCode == http.StatusOK {
-			_ = json.NewDecoder(resp.Body).Decode(&out)
-		}
-		resp.Body.Close()
-	}
-	if out.Jobs == nil {
-		out.Jobs = []any{}
-	}
+	jobs := []any{}
 	for _, j := range a.dl.Snapshot() {
-		out.Jobs = append(out.Jobs, j)
+		jobs = append(jobs, j)
 	}
-	writeJSON(w, http.StatusOK, out)
+	writeJSON(w, http.StatusOK, map[string]any{"jobs": jobs})
 }
 
-// apiJobsClear drops finished download cards here, then lets the server
-// drop its own.
+// apiJobsClear drops a finished download card.
 func (a *Agent) apiJobsClear(w http.ResponseWriter, r *http.Request) {
-	b, _ := io.ReadAll(io.LimitReader(r.Body, 8<<10))
 	var in struct {
 		ID string `json:"id"`
 	}
-	_ = json.Unmarshal(b, &in)
+	_ = json.NewDecoder(io.LimitReader(r.Body, 8<<10)).Decode(&in)
 	a.dl.Forget(strings.TrimSpace(in.ID))
-	r.Body = io.NopCloser(bytes.NewReader(b))
-	r.ContentLength = int64(len(b))
-	a.proxy.ServeHTTP(w, r)
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }

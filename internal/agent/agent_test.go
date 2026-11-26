@@ -84,13 +84,12 @@ func TestDownloaderForget(t *testing.T) {
 	}
 }
 
-// fakeServer plays the Flamingo server: one signed-in cookie, a folder,
-// and a record of what the agent sends.
+// fakeServer plays the Flamingo server: a folder, and a record of what the
+// agent reports.
 type fakeServer struct {
 	mu        sync.Mutex
 	dir       string
 	inventory []InventoryFile
-	seenToken []string
 }
 
 func (f *fakeServer) handler(t *testing.T) http.Handler {
@@ -112,22 +111,6 @@ func (f *fakeServer) handler(t *testing.T) http.Handler {
 		f.mu.Unlock()
 		_, _ = io.WriteString(w, "{}")
 	})
-	mux.HandleFunc("GET /api/me", func(w http.ResponseWriter, r *http.Request) {
-		if c, _ := r.Cookie("flamingo_session"); c == nil || c.Value != "good" {
-			http.Error(w, `{"error":"sign in first"}`, 401)
-			return
-		}
-		_, _ = io.WriteString(w, `{"name":"ana"}`)
-	})
-	mux.HandleFunc("GET /api/jobs", func(w http.ResponseWriter, r *http.Request) {
-		_, _ = io.WriteString(w, `{"jobs":[{"id":"src:@x","kind":"source","state":"done"}]}`)
-	})
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		f.mu.Lock()
-		f.seenToken = append(f.seenToken, strings.Join(r.Header.Values(DeviceHeader), ","))
-		f.mu.Unlock()
-		_, _ = io.WriteString(w, "page for "+r.Host)
-	})
 	return mux
 }
 
@@ -136,7 +119,8 @@ func newAgent(t *testing.T) (*Agent, *fakeServer, http.Handler) {
 	fs := &fakeServer{dir: t.TempDir()}
 	srv := httptest.NewServer(fs.handler(t))
 	t.Cleanup(srv.Close)
-	cfg := &config.Agent{ServerURL: srv.URL, Download: config.AgentDownload{MaxHeight: 1080, Workers: 1}}
+	cfg := &config.Agent{ServerURL: srv.URL, DeviceName: "desk",
+		Download: config.AgentDownload{MaxHeight: 1080, Workers: 1}}
 	a, err := New(cfg, "tok", slog.New(slog.NewTextHandler(io.Discard, nil)))
 	if err != nil {
 		t.Fatal(err)
@@ -144,10 +128,16 @@ func newAgent(t *testing.T) (*Agent, *fakeServer, http.Handler) {
 	return a, fs, a.Handler()
 }
 
-func send(h http.Handler, method, path, cookie string, hdr map[string]string) *httptest.ResponseRecorder {
+// pass is a good ticket for the test agent's computer.
+func pass() string {
+	return ticket.Sign(ticket.KeyOf("tok"), ticket.Claims{Device: "desk", User: 1, Expiry: time.Now().Add(time.Minute).Unix()})
+}
+
+// send makes a request as the Flamingo page would, with tk as its ticket.
+func send(h http.Handler, method, path, tk string, hdr map[string]string) *httptest.ResponseRecorder {
 	r := httptest.NewRequest(method, "http://127.0.0.1:8421"+path, nil)
-	if cookie != "" {
-		r.Header.Set("Cookie", "flamingo_session="+cookie)
+	if tk != "" {
+		r.Header.Set(TicketHeader, tk)
 	}
 	for k, v := range hdr {
 		r.Header.Set(k, v)
@@ -157,16 +147,14 @@ func send(h http.Handler, method, path, cookie string, hdr map[string]string) *h
 	return w
 }
 
-func TestProxyVouchesForTheComputer(t *testing.T) {
-	_, fs, h := newAgent(t)
-	// A browser claiming to be some computer is ignored: only the agent's
-	// own token goes through.
-	w := send(h, "GET", "/", "good", map[string]string{DeviceHeader: "forged"})
-	if w.Code != 200 || !strings.Contains(w.Body.String(), "127.0.0.1:8421") {
-		t.Fatalf("page = %d %q (the browser's Host must reach the server)", w.Code, w.Body.String())
+func TestOldAddressGoesToServer(t *testing.T) {
+	a, _, h := newAgent(t)
+	w := send(h, "GET", "/?source=PLx", "", nil)
+	if w.Code != http.StatusFound || w.Header().Get("Location") != a.Cfg.ServerURL+"/?source=PLx" {
+		t.Errorf("old page = %d %q", w.Code, w.Header().Get("Location"))
 	}
-	if len(fs.seenToken) != 1 || fs.seenToken[0] != "tok" {
-		t.Errorf("server saw tokens %v, want just the agent's", fs.seenToken)
+	if w := send(h, "GET", "/api/state", "", nil); w.Code != 404 {
+		t.Errorf("server api through the agent = %d", w.Code)
 	}
 }
 
@@ -178,17 +166,17 @@ func TestSyncAndMedia(t *testing.T) {
 		t.Fatalf("inventory = %+v", fs.inventory)
 	}
 
-	if w := send(h, "GET", "/media/aaaaaaaaaa1", "", nil); w.Code != 401 && w.Code != http.StatusSeeOther {
-		t.Errorf("media without a session = %d", w.Code)
+	if w := send(h, "GET", "/media/aaaaaaaaaa1", "", nil); w.Code != 401 {
+		t.Errorf("media without a ticket = %d", w.Code)
 	}
-	w := send(h, "GET", "/media/aaaaaaaaaa1", "good", map[string]string{"Range": "bytes=2-4"})
+	w := send(h, "GET", "/media/aaaaaaaaaa1", pass(), map[string]string{"Range": "bytes=2-4"})
 	if w.Code != http.StatusPartialContent || w.Body.String() != "234" {
 		t.Errorf("range = %d %q", w.Code, w.Body.String())
 	}
 
 	// Removed outside the app: /media says so and the server hears of it.
 	os.Remove(filepath.Join(fs.dir, "C", "x_[aaaaaaaaaa1].mp4"))
-	if w := send(h, "GET", "/media/aaaaaaaaaa1", "good", nil); w.Code != 404 {
+	if w := send(h, "GET", "/media/aaaaaaaaaa1", pass(), nil); w.Code != 404 {
 		t.Errorf("missing file = %d", w.Code)
 	}
 	a.sync(context.Background(), false)
@@ -203,12 +191,12 @@ func TestRemoveAndJobs(t *testing.T) {
 	touch(t, filepath.Join(fs.dir, "C", "x_[aaaaaaaaaa1].es.vtt"), "WEBVTT")
 	a.sync(context.Background(), false)
 
-	if w := send(h, "POST", "/api/remove/aaaaaaaaaa1", "good",
+	page := map[string]string{"Origin": a.Cfg.ServerURL}
+	if w := send(h, "POST", "/api/remove/aaaaaaaaaa1", pass(),
 		map[string]string{"Origin": "http://evil.example"}); w.Code != 403 {
 		t.Errorf("cross-site remove = %d", w.Code)
 	}
-	if w := send(h, "POST", "/api/remove/aaaaaaaaaa1", "good",
-		map[string]string{"Origin": "http://127.0.0.1:8421"}); w.Code != 200 {
+	if w := send(h, "POST", "/api/remove/aaaaaaaaaa1", pass(), page); w.Code != 200 {
 		t.Fatalf("remove = %d %s", w.Code, w.Body.String())
 	}
 	left, _ := filepath.Glob(filepath.Join(fs.dir, "C", "*"))
@@ -219,10 +207,10 @@ func TestRemoveAndJobs(t *testing.T) {
 	a.dl.queue = make(chan request, 1) // no workers: the card stays queued
 	a.dl.once.Do(func() {})
 	a.dl.Enqueue("aaaaaaaaaa2", "Two", true, 0)
-	w := send(h, "GET", "/api/jobs", "good", nil)
+	w := send(h, "GET", "/api/jobs", pass(), nil)
 	var out struct{ Jobs []map[string]any }
 	_ = json.Unmarshal(w.Body.Bytes(), &out)
-	if len(out.Jobs) != 2 || out.Jobs[0]["kind"] != "source" || out.Jobs[1]["title"] != "Two" {
+	if len(out.Jobs) != 1 || out.Jobs[0]["title"] != "Two" {
 		t.Errorf("jobs = %s", w.Body.String())
 	}
 }
@@ -231,7 +219,6 @@ func TestRemoveAndJobs(t *testing.T) {
 // address, with a ticket instead of the agent's cookie.
 func TestTicketsFromTheServersPage(t *testing.T) {
 	a, fs, h := newAgent(t)
-	a.Cfg.DeviceName = "desk"
 	touch(t, filepath.Join(fs.dir, "C", "x_[aaaaaaaaaa1].mp4"), "0123456789")
 	a.sync(context.Background(), false)
 	page := strings.TrimRight(a.Cfg.ServerURL, "/") // http://127.0.0.1:<port>
@@ -286,7 +273,7 @@ func TestTicketsFromTheServersPage(t *testing.T) {
 		t.Errorf("sync = %d", w.Code)
 	}
 	if w := send(h, "POST", "/api/sync", "", map[string]string{"Origin": page}); w.Code != 401 {
-		t.Errorf("sync without ticket or cookie = %d", w.Code)
+		t.Errorf("sync without a ticket = %d", w.Code)
 	}
 }
 

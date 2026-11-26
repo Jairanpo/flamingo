@@ -3,7 +3,8 @@
 # ${VAR} references are expanded from the environment, so secrets stay in .env.
 
 listen: ":8420"
-public_url: "http://localhost:8420"
+# The address browsers open Flamingo at (docker-compose publishes 8430).
+public_url: "http://localhost:8430"
 
 database:
   url: "postgres://flamingo:${FLAMINGO_DB_PASSWORD}@db:5432/flamingo?sslmode=disable"

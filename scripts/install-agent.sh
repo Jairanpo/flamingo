@@ -1,31 +1,12 @@
 #!/usr/bin/env bash
-# Builds the flamingo binary, installs it to ~/.local/bin, and starts this
-# computer's agent at every login (systemd user unit). No sudo needed.
-# Pair first, once:  ~/.local/bin/flamingo agent pair --server <url>
+# Builds the flamingo binary from this repository and (re)installs this
+# computer's agent with it: kept in ~/.local/bin, started at every login
+# (systemd user unit). No sudo needed.
+# First time on this computer? Get a code in the app (⬇ set up downloads):
+#   scripts/install-agent.sh --server http://localhost:8430 --code XXXX-XXXX
 set -euo pipefail
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-bin="$HOME/.local/bin"
-units="$HOME/.config/systemd/user"
-
-mkdir -p "$bin" "$units"
-(cd "$repo" && go build -trimpath -o "$bin/flamingo" ./cmd/flamingo)
-echo "installed $bin/flamingo"
-
-if [ ! -s "$HOME/.config/flamingo/agent.token" ]; then
-  echo "not paired yet. Run this, then this script again:" >&2
-  echo "  $bin/flamingo agent pair --server http://127.0.0.1:8430" >&2
-  exit 1
-fi
-
-cp "$repo/deploy/flamingo-agent.service" "$units/"
-systemctl --user daemon-reload
-systemctl --user enable flamingo-agent.service
-systemctl --user restart flamingo-agent.service
-sleep 2
-if curl -fsS -o /dev/null 127.0.0.1:8421/login; then
-  echo "agent up: open http://127.0.0.1:8421"
-else
-  echo "agent did not answer; recent logs:" >&2
-  journalctl --user -u flamingo-agent -n 30 --no-pager >&2
-  exit 1
-fi
+tmp="$(mktemp -d)"
+trap 'rm -rf "$tmp"' EXIT
+(cd "$repo" && go build -trimpath -o "$tmp/flamingo" ./cmd/flamingo)
+"$tmp/flamingo" agent install "$@"

@@ -40,7 +40,7 @@ func agentCmd() *cobra.Command {
 func agentRunCmd(path *string) *cobra.Command {
 	return &cobra.Command{
 		Use:   "run",
-		Short: "Serve the page and keep this computer's downloads",
+		Short: "Run the agent: downloads and playing them, for the Flamingo page",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			cfg, err := config.LoadAgent(*path)
 			if err != nil {

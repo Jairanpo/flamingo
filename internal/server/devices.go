@@ -23,13 +23,12 @@ import (
 // Computers and their download folders.
 //
 // The agent on each computer holds a device token, given to it once when it
-// is paired. It sends the token on its own calls and on every page request
-// it passes through, so the server knows which computer "on disk" means.
-// A browser talking to the server directly sends none, and sees streaming
-// only.
+// is paired, and sends it on its own calls. The page finds the agent on its
+// computer by itself and names that computer on its calls here
+// (X-Flamingo-Device), so the server knows which computer "on disk" means.
+// A page that found no agent names none, and sees streaming only.
 
-// deviceHeader carries the agent's token. The agent strips any copy that
-// comes from the browser before adding its own.
+// deviceHeader carries the agent's token, on the agent's own calls.
 const deviceHeader = "X-Flamingo-Device-Token"
 
 var deviceNameRE = regexp.MustCompile(`^[A-Za-z0-9_.-]{1,64}$`)
@@ -71,20 +70,16 @@ func (s *Server) deviceOf(r *http.Request) (*device, error) {
 // allows no cross-site requests.
 const pageDeviceHeader = "X-Flamingo-Device"
 
-// pageDevice is the computer a signed-in page is on: the one whose agent
-// passed the request along (its token), or the one the page names.
+// pageDevice is the computer a signed-in page names, when the signed-in
+// user paired it.
 func (s *Server) pageDevice(r *http.Request) (*device, error) {
-	d, err := s.deviceOf(r)
-	if d != nil || err != nil {
-		return d, err
-	}
 	name := strings.TrimSpace(r.Header.Get(pageDeviceHeader))
 	u := CurrentUser(r)
 	if name == "" || u == nil {
 		return nil, nil
 	}
 	var pd device
-	err = s.pool.QueryRow(r.Context(), `
+	err := s.pool.QueryRow(r.Context(), `
 		SELECT devi_id, devi_name FROM devices
 		 WHERE devi_name = $1 AND user_id = $2 AND devi_token_hash IS NOT NULL`,
 		name, u.ID).Scan(&pd.ID, &pd.Name)
@@ -426,7 +421,7 @@ type platformJSON struct {
 }
 
 // apiDownloads is the Downloads sheet: every platform's folder, and this
-// computer's when the page came through an agent.
+// computer's when the page found its agent.
 func (s *Server) apiDownloads(w http.ResponseWriter, r *http.Request) {
 	rows, err := s.pool.Query(r.Context(),
 		`SELECT plat_code, plat_name, plat_media_dir FROM platforms ORDER BY plat_name`)
@@ -496,7 +491,7 @@ func (s *Server) apiSetDeviceDir(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if d == nil {
-		fail(w, http.StatusBadRequest, "open Flamingo through this computer's agent to set its folder")
+		fail(w, http.StatusBadRequest, "this computer has no Flamingo helper: set up downloads first")
 		return
 	}
 	dir := cleanDir(str(body(r), "media_dir"))

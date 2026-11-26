@@ -12,10 +12,7 @@ import (
 
 func TestLibraryPage(t *testing.T) {
 	var b bytes.Buffer
-	data := struct {
-		User   *auth.User
-		Device string
-	}{&auth.User{Name: "ana", DisplayName: `Ana <script>x</script>`}, `desk"><b`}
+	data := struct{ User *auth.User }{&auth.User{Name: "ana", DisplayName: `Ana <script>x</script>`}}
 	if err := pages.ExecuteTemplate(&b, "library.html", data); err != nil {
 		t.Fatal(err)
 	}
@@ -26,7 +23,6 @@ func TestLibraryPage(t *testing.T) {
 		`href="/assets/app.css"`,
 		`action="/logout"`,
 		`Ana &lt;script&gt;x&lt;/script&gt;`,
-		`data-device="desk&#34;&gt;&lt;b"`,
 	} {
 		if !strings.Contains(html, want) {
 			t.Errorf("page lacks %s", want)

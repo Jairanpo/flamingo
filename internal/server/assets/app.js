@@ -3,16 +3,13 @@ const state = { q:"", source:"", collection:"", have:null, starred:false,
                 collections:[], sort:"default", toggl:{}, togglChannels:[],
                 all:false, pins:[], maxPins:5 };
 const $ = s => document.querySelector(s);
-// Downloads live on a computer, so they only show when the page knows this
-// computer's agent. Either the page came through the agent (8421: it talks
-// to the agent as its own address), or it came from the server and finds
-// the agent itself, then talks to it directly with a ticket the server
-// signs (findAgent, below). Otherwise everything streams.
-const VIA_AGENT = document.body.dataset.device !== "";
-let ON_DEVICE = VIA_AGENT;
+// Downloads live on a computer, so they only show once the page finds this
+// computer's agent and talks to it directly, with a ticket the server signs
+// (findAgent, below). Otherwise everything streams.
+let ON_DEVICE = false;
 const AGENT_URL = "http://127.0.0.1:8421";
-// The computer a server-served page found, and its pass for that agent.
-const agent = { device: "", ticket: "", expires: 0, state: VIA_AGENT ? "via" : "looking" };
+// The computer this page found, and its pass for that computer's agent.
+const agent = { device: "", ticket: "", expires: 0, state: "looking" };
 const fmtDur = s => { if(!s) return ""; s=Math.round(s);
   const h=Math.floor(s/3600), m=Math.floor(s%3600/60), x=s%60;
   return h ? `${h}:${String(m).padStart(2,"0")}:${String(x).padStart(2,"0")}`
@@ -46,12 +43,20 @@ async function ticketNow(force) {
   return agent.ticket;
 }
 async function findAgent() {
-  if (VIA_AGENT) return;
   let hello;
   try {
-    const r = await fetch(AGENT_URL + "/api/hello", {signal: AbortSignal.timeout(1500)});
+    // targetAddressSpace: Chrome's way for a page to ask before reaching
+    // apps on this computer (Local network access); others ignore it.
+    const r = await fetch(AGENT_URL + "/api/hello",
+      {signal: AbortSignal.timeout(1500), targetAddressSpace: "loopback"});
     hello = await r.json();
-  } catch (e) { agent.state = "none"; return; }
+  } catch (e) {
+    agent.state = "none";
+    // Chrome may be the one saying no: remember whether it was ever asked.
+    try { agent.lna = (await navigator.permissions.query({name: "local-network-access"})).state; }
+    catch (e2) { agent.lna = ""; }
+    return;
+  }
   agent.device = hello.device;
   try { await ticketNow(true); }
   catch (e) {
@@ -65,7 +70,6 @@ async function findAgent() {
 }
 // local is api() for what lives on this computer: downloads, files, jobs.
 async function local(path, opts) {
-  if (VIA_AGENT) return api(path, opts);
   if (agent.state !== "found") throw new Error("this computer has no Flamingo helper");
   for (let tries = 0; ; tries++) {
     const t = await ticketNow(tries > 0);
@@ -79,8 +83,7 @@ const localPost = (p, body) => local(p, {method:"POST", headers:{"Content-Type":
                                          body: JSON.stringify(body||{})});
 // localURL is a file's address for <video> and <track>, which cannot send
 // a header: the ticket rides in the address.
-const localURL = path => VIA_AGENT ? path
-  : `${AGENT_URL}${path}?t=${encodeURIComponent(agent.ticket)}`;
+const localURL = path => `${AGENT_URL}${path}?t=${encodeURIComponent(agent.ticket)}`;
 
 function params() {
   const p = new URLSearchParams();
@@ -1006,7 +1009,7 @@ function open_(v, from) {
       if (current?.id !== v.id) return;
       // A ticket that ran out mid-film looks the same as a missing file:
       // renew it once and carry on from the same second.
-      if (!VIA_AGENT && !renewed) {
+      if (!renewed) {
         renewed = true;
         const t = vid.currentTime;
         try { await ticketNow(true); } catch (e) { fileMissing(v); return; }
@@ -1018,7 +1021,7 @@ function open_(v, from) {
       fileMissing(v);
     };
     // Subtitles from another address need the video to ask politely (CORS).
-    if (VIA_AGENT) vid.removeAttribute("crossorigin"); else vid.crossOrigin = "anonymous";
+    vid.crossOrigin = "anonymous";
     vid.src = localURL(`/media/${v.id}`);
     vid.currentTime = at;
     vid.play().catch(()=>{});
@@ -1593,6 +1596,11 @@ async function openDownloads() {
     : agent.state === "other"
     ? `This computer's helper (${agent.otherName}) is paired to another ` +
       "account. Pair it to yours with a code below."
+    : agent.lna === "prompt" || agent.lna === "denied"
+    ? "No helper answered. Already set it up? Then the browser is blocking this " +
+      "page from reaching apps on this computer: click the icon left of the " +
+      "address → Site settings → Local network access → Allow, then reload. " +
+      "Otherwise, set it up below."
     : "This computer has no Flamingo helper yet, so it can only stream.";
   $("#dlsetup").hidden = !!dev;
   if (!dev) setupSheet();
@@ -1622,7 +1630,7 @@ async function openDownloads() {
       btn.disabled = true;
       try {
         await post("/api/downloads/platform", {code: p.code, media_dir: inp.value});
-        if (!VIA_AGENT && agent.state === "found") await localPost("/api/sync").catch(() => {});
+        if (agent.state === "found") await localPost("/api/sync").catch(() => {});
         btn.textContent = "Saved";
       }
       catch (e) { dlError(e.message); }
@@ -1641,15 +1649,51 @@ $("#dlsave").onclick = async () => {
   try {
     await post("/api/downloads/device", {media_dir: $("#dldir").value});
     // Have the agent look in the new place before the list comes back.
-    if (!VIA_AGENT) await localPost("/api/sync").catch(() => {});
+    await localPost("/api/sync").catch(() => {});
     await openDownloads();
     refresh();
   } catch (e) { dlError(e.message); }
   finally { btn.disabled = false; }
 };
-/* Setting a computer up from the page: download the helper for its system,
-   get a one-time code, run one command. The sheet keeps asking for the
-   helper and reloads once it answers. */
+/* Setting a computer up from the page: pick its system, download the
+   helper, install yt-dlp and ffmpeg once, then one command with a one-time
+   code. The sheet keeps asking for the helper and reloads once it answers. */
+const SETUP = {
+  linux: {
+    name: "Linux",
+    files: ["flamingo-linux-amd64"],
+    download: "It goes to your Downloads folder.",
+    tools: ["In a terminal (Ctrl+Alt+T). Skip whatever you already have:",
+      {code: "sudo apt install -y ffmpeg && mkdir -p ~/.local/bin && curl -L " +
+             "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp " +
+             "-o ~/.local/bin/yt-dlp && chmod +x ~/.local/bin/yt-dlp"},
+      "On Fedora, ffmpeg comes from: sudo dnf install ffmpeg"],
+    pair: "Paste the command in the terminal and press Enter. It keeps the " +
+          "helper in ~/.local/bin and starts it at every login.",
+  },
+  macos: {
+    name: "macOS",
+    files: ["flamingo-macos-arm64", "flamingo-macos-amd64"],
+    download: "Apple silicon for M1 and later, Intel for older Macs " +
+              "(Apple menu → About This Mac → Chip).",
+    tools: ["With Homebrew (brew.sh), in Terminal (⌘ Space, type Terminal):",
+      {code: "brew install yt-dlp ffmpeg"}],
+    pair: "Paste the command in Terminal and press Enter. It also lifts " +
+          "macOS's “unidentified developer” block for this one file, keeps " +
+          "the helper in Application Support and starts it at every login.",
+  },
+  windows: {
+    name: "Windows",
+    files: ["flamingo-windows-amd64.exe"],
+    download: "If the browser says the file isn't commonly downloaded, choose Keep.",
+    tools: ["In PowerShell (Start, type PowerShell):",
+      {code: "winget install yt-dlp.yt-dlp Gyan.FFmpeg"},
+      "Then close PowerShell and open it again, so it finds them."],
+    pair: "Paste the command in PowerShell and press Enter. If SmartScreen " +
+          "appears, choose More info → Run anyway. It keeps the helper in " +
+          "your AppData folder and starts it with Windows, without a window.",
+  },
+};
 function myOS() {
   const p = (navigator.userAgentData?.platform || navigator.platform || navigator.userAgent).toLowerCase();
   if (p.includes("win")) return "windows";
@@ -1664,45 +1708,91 @@ function setupCommand(file, code) {
     ? ` && (xattr -d com.apple.quarantine "$f" 2>/dev/null; true)` : "";
   return `f=~/Downloads/${file}; chmod +x "$f"${mac} && "$f" agent install --server ${server} --code ${code}`;
 }
-let setupFile = "", setupWatch = null;
-async function setupSheet() {
-  const box = $("#dlagents");
-  box.replaceChildren();
-  let list = [];
-  try { list = (await api("/api/devices/agents")).agents; } catch (e) {}
-  if (!list.length) {
-    box.textContent = "this server has no helper builds yet (they come with the Docker image).";
-  }
-  const os = myOS();
-  setupFile = (list.find(a => a.os === os) || list[0] || {}).file || "";
-  for (const a of list) {
+// cmdBox is a command to copy: the text and a Copy button.
+function cmdBox(text) {
+  const box = document.createElement("div");
+  box.className = "cmd";
+  const pre = document.createElement("pre");
+  pre.textContent = text;
+  const b = document.createElement("button");
+  b.className = "act"; b.textContent = "Copy";
+  b.onclick = async () => {
+    try { await navigator.clipboard.writeText(pre.textContent); b.textContent = "Copied"; }
+    catch (e) { b.textContent = "Select and copy"; }
+    setTimeout(() => b.textContent = "Copy", 1500);
+  };
+  box.append(pre, b);
+  return box;
+}
+const setup = { os: "", file: "", code: "", agents: [], watch: null };
+function paintSetup() {
+  const os = SETUP[setup.os];
+  for (const b of $("#dlos").children) b.setAttribute("aria-selected", String(b.dataset.os === setup.os));
+  const mine = setup.agents.filter(a => os.files.includes(a.file));
+  if (!os.files.includes(setup.file)) setup.file = (mine[0] || {}).file || os.files[0];
+
+  const step = (title, ...parts) => {
+    const li = document.createElement("li");
+    const b = document.createElement("b"); b.textContent = title; li.appendChild(b);
+    for (const p of parts) {
+      if (typeof p === "string") {
+        const h = document.createElement("span"); h.className = "hint"; h.textContent = p; li.appendChild(h);
+      } else if (p.code) li.appendChild(cmdBox(p.code));
+      else li.appendChild(p);
+    }
+    return li;
+  };
+  const links = document.createElement("span");
+  links.id = "dlagents";
+  if (!mine.length) links.textContent = "This server has no helper build for " + os.name +
+    " yet (they come with the Docker image).";
+  for (const a of mine) {
     const l = document.createElement("a");
     l.href = `/download/agent/${a.file}`; l.download = a.file;
     l.textContent = `${a.name} · ${fmtSize(a.size)}`;
-    l.classList.toggle("mine", a.file === setupFile);
-    l.onclick = () => { setupFile = a.file; for (const x of box.children) x.classList.toggle("mine", x === l); };
-    box.appendChild(l);
+    l.classList.toggle("mine", a.file === setup.file);
+    l.onclick = () => { setup.file = a.file; paintSetup(); };
+    links.appendChild(l);
   }
-  $("#dlrun").hidden = true;
-  $("#dlcodenote").textContent = "then run what appears here in a terminal.";
+  $("#dlcodenote").textContent = setup.code
+    ? `Code ${setup.code} works once, for 5 minutes.` : "";
+  $("#dlrun").hidden = !setup.code;
+  if (setup.code) $("#dlcmd").textContent = setupCommand(setup.file, setup.code);
+  $("#dlsteps").replaceChildren(
+    step("Download the helper", links, os.download),
+    step("Install yt-dlp and ffmpeg, once", "Flamingo uses them to download.", ...os.tools),
+    step("Pair and install", "Get a code, then run the command it shows. " + os.pair, $("#dlpair")),
+    step("Done", "This page turns downloads on by itself once the helper answers. " +
+         "Saved the file somewhere other than Downloads? Change that path in the command."));
+}
+async function setupSheet() {
+  try { setup.agents = (await api("/api/devices/agents")).agents; } catch (e) { setup.agents = []; }
+  setup.os = setup.os || myOS();
+  const tabs = $("#dlos");
+  tabs.replaceChildren();
+  for (const [key, os] of Object.entries(SETUP)) {
+    const b = document.createElement("button");
+    b.role = "tab"; b.dataset.os = key; b.textContent = os.name;
+    b.onclick = () => { setup.os = key; paintSetup(); };
+    tabs.appendChild(b);
+  }
+  paintSetup();
   // Watch for the helper while the sheet is open.
-  clearInterval(setupWatch);
-  setupWatch = setInterval(async () => {
-    if (!$("#dlmodal").classList.contains("on")) { clearInterval(setupWatch); return; }
+  clearInterval(setup.watch);
+  setup.watch = setInterval(async () => {
+    if (!$("#dlmodal").classList.contains("on")) { clearInterval(setup.watch); return; }
     agent.state = "looking";
     await findAgent();
-    if (agent.state === "found") { clearInterval(setupWatch); location.reload(); }
+    if (agent.state === "found") { clearInterval(setup.watch); location.reload(); }
   }, 3000);
 }
 $("#dlcode").onclick = async () => {
   dlError("");
-  let d;
-  try { d = await post("/api/devices/pair-code"); } catch (e) { dlError(e.message); return; }
-  $("#dlcmd").textContent = setupCommand(setupFile || "flamingo-linux-amd64", d.code);
-  $("#dlrun").hidden = false;
-  $("#dlcodenote").textContent = `Code ${d.code} works once, for 5 minutes. ` +
-    (setupFile.endsWith(".exe") ? "Run it in PowerShell:" : "Run it in a terminal:");
+  try { setup.code = (await post("/api/devices/pair-code")).code; }
+  catch (e) { dlError(e.message); return; }
+  paintSetup();
 };
+// The pairing command's Copy button.
 $("#dlcopy").onclick = async () => {
   try { await navigator.clipboard.writeText($("#dlcmd").textContent); $("#dlcopy").textContent = "Copied"; }
   catch (e) { $("#dlcopy").textContent = "Select and copy"; }
@@ -2126,7 +2216,7 @@ const AUTO_DISMISS_MS = 4000;
 // this computer's agent's.
 function clearJob(id) {
   post("/api/jobs/clear", {id}).catch(() => {});
-  if (!VIA_AGENT && agent.state === "found") localPost("/api/jobs/clear", {id}).catch(() => {});
+  if (agent.state === "found") localPost("/api/jobs/clear", {id}).catch(() => {});
 }
 function dismissJob(j) {
   dismissed.add(j.id);
@@ -2197,9 +2287,8 @@ function dismissAllJobs() {
 }
 async function pollJobs() {
   const d = await api("/api/jobs");
-  // Through the agent its list already holds both; otherwise add this
-  // computer's downloads to the server's cards.
-  if (!VIA_AGENT && agent.state === "found") {
+  // The server's cards, plus this computer's downloads.
+  if (agent.state === "found") {
     const mine = await local("/api/jobs").catch(() => ({jobs: []}));
     const seen = new Set(d.jobs.map(j => j.id));
     d.jobs = d.jobs.concat(mine.jobs.filter(j => !seen.has(j.id)));
@@ -2262,10 +2351,8 @@ refresh();
 // it shows again with what is on disk and the download menus.
 findAgent().then(() => {
   if (agent.state !== "found") {
-    if (!VIA_AGENT) {
-      $("#dlcfg").textContent = "⬇ set up downloads";
-      $("#dlcfg").title = "This computer has no Flamingo helper yet: set it up to download";
-    }
+    $("#dlcfg").textContent = "⬇ set up downloads";
+    $("#dlcfg").title = "This computer has no Flamingo helper yet: set it up to download";
     return;
   }
   $("#f-have").hidden = false;
