@@ -8,22 +8,25 @@
   src:url(/assets/fonts/nunito.woff2) format("woff2");
   unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD; }
 :root {
-  /* Flamingo palette, dark only. Navy base (deepened from #01162F), warm
-     white text; flamingo pink #EB9FEF is for accents, highlights and
-     headings only. Blush #FECEE9 and slate #545677 are the extras. */
-  --bg:#000d1f; --panel:#06182f; --well:#0a1f3a; --edge:#545677;
-  --ink:#f5efe6; --dim:#aba79f; --accent:#EB9FEF; --on-accent:#000d1f;
-  --blush:#FECEE9; --slate:#545677; --slate-lo:rgba(84,86,119,.28);
-  --slate-hi:#6a6c94; --ok:#7fd4a8; --bad:#ff8a9a; --shadow:0 1px 3px rgba(0,0,0,.5);
+  /* Flamingo palette, dark only, cozy: an evening room lit by paper lamps.
+     The base is a soft indigo ink (ai-zome, softened from navy #000d1f),
+     panels a touch warmer, text and hairlines washi-paper cream. Flamingo
+     pink #EB9FEF is for accents, highlights and headings only. Blush
+     #FECEE9 and a warm slate are the extras. */
+  --bg:#0e131c; --panel:#161b25; --well:#1e232e; --edge:#4a4554;
+  --ink:#f2e8d5; --dim:#b3a993; --accent:#EB9FEF; --on-accent:#0e131c;
+  --cream:#f2e8d5; --hair:rgba(242,232,213,.12);
+  --blush:#FECEE9; --slate:#5a5670; --slate-lo:rgba(90,86,112,.28);
+  --slate-hi:#716c8c; --ok:#7fd4a8; --bad:#ff8a9a; --shadow:0 1px 3px rgba(0,0,0,.5);
   /* Warm marks what to do now (Focus); cool slate settles what can wait. */
-  --warm:#F6C177; --on-warm:#1a1206; --cool:#9a9cc8;
-  --cool-lo:rgba(84,86,119,.16); --cool-edge:rgba(106,108,148,.30);
+  --warm:#F6C177; --on-warm:#1a1206; --cool:#a9a3c0;
+  --cool-lo:rgba(90,86,112,.16); --cool-edge:rgba(113,108,140,.30);
   color-scheme: dark;
 }
 * { box-sizing:border-box; }
 body { margin:0; background:var(--bg); color:var(--ink); font:500 15.5px/1.5 "Nunito",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; }
 header { position:sticky; top:0; z-index:20; background:var(--bg);
-         border-bottom:1px solid var(--edge); padding:12px 20px;
+         border-bottom:1px solid var(--hair); padding:12px 20px;
          display:flex; flex-direction:column; gap:10px; }
 /* Two rows: who and where on top, what to show below. */
 .hrow { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
@@ -110,7 +113,6 @@ main { padding:20px; flex:1; min-width:0; }
 #side .sfitem .fl { display:flex; gap:8px; align-items:baseline; font-weight:600; }
 #side .fbar { display:block; height:4px; border-radius:4px; background:var(--well); overflow:hidden; }
 #side .fbar i { display:block; height:100%; background:var(--blush); }
-#side .sfitem:first-of-type .fbar i { background:var(--accent); }
 #side .sfitem.done .ct { color:var(--ok); }
 #side .sfitem.done .fbar i { background:var(--ok); }
 /* The backlog waits on a cool shelf. */
@@ -145,7 +147,7 @@ main { padding:20px; flex:1; min-width:0; }
 .flag.have { background:var(--blush); color:var(--on-accent); }
 .card.watched .thumbwrap img { opacity:.45; }
 .card.gone .thumbwrap { background:repeating-linear-gradient(45deg,
-    #06182f, #06182f 8px, #0c2240 8px, #0c2240 16px); cursor:default; }
+    #161b25, #161b25 8px, #1e232e 8px, #1e232e 16px); cursor:default; }
 .card.gone .thumbwrap img, .card.gone .title { opacity:.5; }
 /* Watched: a green tick in the thumbnail's middle, big enough to read the
    state of a whole course at a glance. */
@@ -189,8 +191,8 @@ button.act:disabled { opacity:.55; cursor:default; }
 .empty { color:var(--dim); text-align:center; padding:64px 20px; }
 /* Home: your Focus instead of the whole library. */
 #dash[hidden] { display:none; }
-/* The dashboard sits on its own darker stage with a soft pattern, so it
-   reads as the most important thing on the page. */
+/* The dashboard sits on its own plain, darker stage, so it reads as the
+   most important thing on the page. */
 /* Full bleed: it cancels main's 20px padding so the stage reaches the
    sidebar and the header, and runs at least to the bottom of the window. */
 /* Town palette, after a sunny small harbor town at the end of the
@@ -204,28 +206,6 @@ button.act:disabled { opacity:.55; cursor:default; }
         margin:-20px; padding:22px 20px 28px;
         min-height:calc(100vh - var(--hh, 60px));
         background:#0f0a06; }
-/* Depth: three still layers at different distances and a grid floor that
-   recedes to a horizon, so the stage reads as a space, not a flat panel.
-   Nothing moves: a live 3D floor (even still) halved the page's frame rate,
-   so the floor is a picture, floor.svg, drawn in perspective. */
-#dash .depth { position:absolute; inset:0; z-index:-1; pointer-events:none;
-               overflow:hidden; }
-#dash .dl { position:absolute; inset:-80px; }
-#dash .far {
-  background:
-    radial-gradient(560px 280px at 88% 0%, rgba(242,201,76,.18), transparent 70%),
-    radial-gradient(460px 320px at 0% 100%, rgba(200,100,59,.12), transparent 70%),
-    radial-gradient(circle at 1px 1px, rgba(243,227,195,.10) 1px, transparent 1.6px) 0 0/22px 22px; }
-#dash .mid { inset:auto 0 0 0; height:55%;
-  background:url(/assets/floor.svg) center bottom/100% 100% no-repeat; }
-/* The horizon line where the floor meets the sky. */
-#dash .mid::before { content:""; position:absolute; z-index:1; left:0; right:0; top:0; height:2px;
-  background:linear-gradient(90deg, transparent, rgba(126,200,227,.5), transparent); }
-#dash .near {
-  background:
-    radial-gradient(90px 90px at 12% 28%, rgba(242,201,76,.18), transparent 70%),
-    radial-gradient(140px 140px at 78% 62%, rgba(243,227,195,.08), transparent 70%),
-    radial-gradient(60px 60px at 52% 14%, rgba(126,200,227,.22), transparent 70%); }
 .fhead { display:flex; flex-wrap:wrap; align-items:flex-end; gap:12px 20px; margin:6px 0 24px; }
 .ftitle { flex:1; min-width:240px; }
 .ftitle h1 { margin:0; font-family:"Outfit",sans-serif; font-size:38px; font-weight:800;
@@ -238,12 +218,6 @@ button.act:disabled { opacity:.55; cursor:default; }
 .fmeter i.warm { background:var(--warm); }
 .fbody { display:flex; flex-direction:column; gap:22px; }
 #dash button { font:inherit; color:inherit; cursor:pointer; }
-/* The one to continue. */
-.fhero { display:grid; grid-template-columns:repeat(auto-fit, minmax(300px, 1fr)); gap:26px;
-  padding:22px; border-radius:20px; border:1px solid rgba(242,201,76,.45);
-  background:linear-gradient(135deg, #2a1d10 0%, #1a120a 55%, #261510 100%);
-  box-shadow:inset 0 1px 0 rgba(243,227,195,.25), 0 0 0 6px rgba(242,201,76,.06),
-             0 24px 60px rgba(0,0,0,.45); }
 .fthumb { position:relative; display:grid; place-items:center; padding:0; border:0;
   aspect-ratio:16/9; border-radius:14px; overflow:hidden; background:#3a2a18; }
 .fthumb img { position:absolute; inset:0; width:100%; height:100%; object-fit:cover;
@@ -255,43 +229,17 @@ button.act:disabled { opacity:.55; cursor:default; }
 .fthumb .dur { position:absolute; right:10px; bottom:10px; padding:2px 8px; border-radius:6px;
   background:var(--warm); color:var(--on-warm); font-size:12px; font-weight:700;
   font-variant-numeric:tabular-nums; }
-.finfo { display:flex; flex-direction:column; gap:12px; min-width:0; }
-.finfo .k { font-size:12px; font-weight:800; letter-spacing:.1em; text-transform:uppercase;
-  color:var(--warm); }
-.finfo h2 { margin:0; font-family:"Outfit",sans-serif; font-size:26px; line-height:1.2;
-  font-weight:700; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical;
-  overflow:hidden; }
-.finfo .src { align-self:flex-start; border:0; background:none; padding:0; color:var(--dim);
-  text-align:left; }
-.finfo .src:hover { color:var(--blush); }
-.fprog { display:flex; flex-direction:column; gap:6px; }
-.fprog .track { height:8px; border-radius:8px; background:var(--well); overflow:hidden; }
-.fprog .track i { display:block; height:100%; background:var(--accent); }
-.fprog .n { font-size:13px; color:var(--dim); }
 .facts { display:flex; flex-wrap:wrap; align-items:center; gap:10px; }
-.fplay, .fdone { display:flex; align-items:center; gap:8px; min-height:44px; padding:0 20px;
+.fdone { display:flex; align-items:center; gap:8px; min-height:44px; padding:0 20px;
   border:0; border-radius:10px; background:var(--accent); color:var(--on-accent) !important;
   font-weight:800 !important; }
-.fplay:hover { background:var(--blush); }
-.fopen { min-height:44px; padding:0 16px; border-radius:10px; border:1px solid var(--edge);
-  background:transparent; font-weight:600; }
-.fopen:hover { border-color:var(--blush); color:var(--blush) !important; }
-.fthen { display:flex; flex-direction:column; gap:2px; padding:10px 12px; border-radius:12px;
-  background:rgba(122,86,52,.22); border:1px solid var(--cool-edge); }
-.fthen .k2 { font-size:12px; font-weight:700; color:var(--cool); padding:0 4px 2px; }
-.fq { display:flex; justify-content:space-between; gap:12px; padding:4px; border:0;
-  border-radius:6px; background:none; text-align:left; font-size:14px; }
-.fq:hover { background:rgba(122,86,52,.30); }
-.fq .t { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.fq .d { color:var(--dim); font-variant-numeric:tabular-nums; }
-/* The rest of the Focus: smaller and cooler. */
+/* Every Focus gets the same card: none outranks the others. */
 .fcards { display:grid; gap:18px; grid-template-columns:repeat(auto-fill, minmax(340px, 1fr)); }
 .fcard { display:flex; gap:16px; align-items:center; padding:14px; border-radius:16px;
   background:#1a120a; border:1px solid #3e2c1a; transition:border-color .15s; }
 .fcard:hover { border-color:rgba(242,201,76,.45); }
 .fcard .fthumb { flex:0 0 150px; border-radius:10px; }
-.fcard .fthumb .play { width:40px; height:40px; font-size:15px; padding-left:2px;
-  background:var(--blush); }
+.fcard .fthumb .play { width:40px; height:40px; font-size:15px; padding-left:2px; }
 .fcard .fc { flex:1; min-width:0; display:flex; flex-direction:column; gap:5px; }
 .fcard .nm { border:0; background:none; padding:0; text-align:left; font-family:"Outfit",sans-serif;
   font-weight:700; font-size:17px; }
@@ -367,7 +315,7 @@ body.hasfold #jobs { bottom:62px; }
   .card.sinking, .srow.rising { transition:none; }
 }
 /* player overlay */
-#player { position:fixed; inset:0; background:rgba(0,8,20,.96); z-index:50;
+#player { position:fixed; inset:0; background:rgba(10,13,19,.96); z-index:50;
           display:none; flex-direction:column; padding:24px; }
 #player.on { display:flex; }
 #player video { width:100%; max-width:1100px; max-height:70vh; margin:0 auto;
@@ -384,23 +332,23 @@ body.hasfold #jobs { bottom:62px; }
 #pchap button { flex:1 1 0; min-width:2px; padding:0; border:none;
                 border-radius:2px; cursor:pointer; transition:transform .1s;
                 background:linear-gradient(to right, var(--accent) var(--p,0%),
-                                           rgba(245,239,230,.22) var(--p,0%)); }
+                                           rgba(242,232,213,.22) var(--p,0%)); }
 #pchap button:hover { transform:scaleY(1.8); }
 #pchlist { list-style:none; margin:10px 0 0; padding:0; max-height:18vh;
            overflow:auto; font-size:13.5px; color-scheme:dark; }
 #pchlist button { display:flex; gap:10px; width:100%; text-align:left;
                   background:none; border:none; border-radius:4px; padding:2px 6px;
-                  font:inherit; color:#d8d2c8; cursor:pointer; }
-#pchlist button:hover { background:rgba(245,239,230,.08); color:var(--ink); }
+                  font:inherit; color:#ddd2bd; cursor:pointer; }
+#pchlist button:hover { background:rgba(242,232,213,.08); color:var(--ink); }
 #pchlist li.on button { color:var(--accent); }
 #pchlist .ts { color:var(--dim); min-width:5ch; font-variant-numeric:tabular-nums; }
 /* Speed: the browser's own menu forgets it on every new video, so the
    choice lives here and follows you from one video to the next. */
 #pspeed, #pquality { display:flex; gap:4px; margin-top:8px; }
 #pquality[hidden] { display:none; }
-#pspeed button, #pquality button { background:none; border:1px solid rgba(245,239,230,.25);
+#pspeed button, #pquality button { background:none; border:1px solid rgba(242,232,213,.25);
                  border-radius:6px; padding:2px 9px; font:inherit; font-size:12.5px;
-                 color:#d8d2c8; cursor:pointer; font-variant-numeric:tabular-nums; }
+                 color:#ddd2bd; cursor:pointer; font-variant-numeric:tabular-nums; }
 #pspeed button:hover, #pquality button:hover { border-color:var(--accent); color:var(--accent); }
 #pspeed button.on, #pquality button.on { background:var(--slate); border-color:var(--blush); color:var(--blush); }
 /* Marks: ticks on a strip under the picture, and a list you can annotate. */
@@ -412,7 +360,7 @@ body.hasfold #jobs { bottom:62px; }
 #pmstrip button:hover { transform:scaleX(1.8); }
 #pmarkrow { display:flex; align-items:center; gap:10px; margin-top:10px; }
 #pmarkrow .hint { color:var(--dim); font-size:12px; }
-#pmarkadd { background:none; border:1px solid rgba(245,239,230,.35); color:var(--ink);
+#pmarkadd { background:none; border:1px solid rgba(242,232,213,.35); color:var(--ink);
             border-radius:6px; padding:4px 10px; font:inherit; font-size:13px;
             cursor:pointer; }
 #pmarkadd:hover { border-color:#f2c14e; color:#f2c14e; }
@@ -422,8 +370,8 @@ body.hasfold #jobs { bottom:62px; }
 #pmarks .ts { background:none; border:none; color:#f2c14e; font:inherit; cursor:pointer;
               min-width:5ch; text-align:left; font-variant-numeric:tabular-nums; padding:2px 6px; }
 #pmarks .note { flex:1; min-width:0; background:none; border:1px solid transparent;
-                color:#d8d2c8; font:inherit; padding:2px 6px; border-radius:4px; }
-#pmarks .note:hover { border-color:rgba(245,239,230,.2); }
+                color:#ddd2bd; font:inherit; padding:2px 6px; border-radius:4px; }
+#pmarks .note:hover { border-color:rgba(242,232,213,.2); }
 #pmarks .note:focus { border-color:#f2c14e; outline:none; color:var(--ink); }
 #pmarks .x { background:none; border:none; color:var(--dim); cursor:pointer; font-size:16px; }
 #pmarks .x:hover { color:var(--ink); }
@@ -445,7 +393,7 @@ body.hasfold #jobs { bottom:62px; }
 #pdescbox h3 { margin:0 0 8px; font-size:12px; font-weight:800; letter-spacing:.08em;
                text-transform:uppercase; color:var(--cool); }
 #pdesc { white-space:pre-wrap; overflow-wrap:anywhere; font-size:14px; line-height:1.6;
-         color:#d8d2c8; }
+         color:#ddd2bd; }
 #pdesc a { color:var(--accent); }
 #pdesc a:hover { color:var(--blush); }
 #pdesc .ts { border:0; background:none; padding:0; font:inherit; color:var(--warm);
@@ -471,12 +419,12 @@ body.hasfold #jobs { bottom:62px; }
           width:40px; height:40px; display:grid; place-items:center; padding:0;
           background:none; border:none; border-radius:8px; color:var(--ink);
           font-size:26px; line-height:1; cursor:pointer; }
-#pclose:hover { background:rgba(245,239,230,.14); }
+#pclose:hover { background:rgba(242,232,213,.14); }
 .seq { position:absolute; left:6px; top:6px; background:var(--accent);
        color:var(--on-accent); font-size:11px; font-weight:600; padding:2px 7px;
        border-radius:4px; font-variant-numeric:tabular-nums; }
 /* One overlay style, two sheets: add to a collection, and track a source. */
-.sheet { position:fixed; inset:0; background:rgba(0,8,20,.7); z-index:60;
+.sheet { position:fixed; inset:0; background:rgba(10,13,19,.7); z-index:60;
          display:none; align-items:center; justify-content:center; }
 .sheet.on { display:flex; }
 .sheet .box { background:var(--panel); border:1px solid var(--edge);
@@ -669,3 +617,60 @@ body.hasfold #jobs { bottom:62px; }
 #dlsetup .cmd pre { flex:1; margin:0; padding:8px 10px; background:var(--bg); border:1px solid var(--edge);
   border-radius:8px; font-size:12px; white-space:pre-wrap; word-break:break-all; color:var(--ink); }
 #dlsetup .cmd[hidden] { display:none; }
+
+/* ── Paper cards ─────────────────────────────────────────────────────────
+   The room stays dark; what you read sits on warm cream paper, round and
+   soft, like notes on a cozy village notice board. Every rule above reads
+   the color tokens, so a card only has to swap them: inside paper, "ink"
+   is cocoa brown, "accent" is leaf green, "slate" is sand. */
+.card, .sheet .box, #qmenu, .job, #jobs .clearall, #viewbar, .cont, .fcard {
+  --bg:#fffaf0; --panel:#f4ecd8; --well:#e9dec4; --edge:#dccbab;
+  --ink:#5b4636; --dim:#8b7562; --hair:rgba(91,70,54,.15);
+  --accent:#3f8a4a; --on-accent:#fffaf0; --blush:#2f6e39; --leaf:#7cc576;
+  --slate:#e3d5b5; --slate-lo:#ece2c9; --slate-hi:#d9c79f;
+  --ok:#3f9a5e; --bad:#c4473a; --warm:#d0702f; --on-warm:#fffaf0;
+  --cool:#7a6f9a; --cool-lo:rgba(122,111,154,.10); --cool-edge:rgba(122,111,154,.28);
+  /* A chunky bottom edge, like card stock lying on the table. */
+  --shadow:0 3px 0 #cdb991, 0 8px 22px rgba(0,0,0,.35);
+  color-scheme:light; color:var(--ink); }
+/* The Focus cards keep the town's yellow, now as fills on paper. */
+.fcard { --accent:#F2C94C; --on-accent:#4a3420; --blush:#b5781a;
+  --cool:#8a6a48; --cool-edge:rgba(138,106,72,.30); }
+
+/* Round everything that holds something. */
+.card { border-radius:18px; border-width:2px; }
+.sheet .box { border-radius:22px; border-width:2px; padding:20px 22px; box-shadow:var(--shadow); }
+#qmenu { border-radius:16px; border-width:2px; padding:6px; box-shadow:var(--shadow); }
+#qmenu button { border-radius:10px; }
+.job { border-radius:14px; border-width:2px; }
+#viewbar { background:var(--panel); border:2px solid var(--edge); border-radius:20px; }
+.cont { border:2px solid var(--edge); box-shadow:var(--shadow); }
+.fcard .fthumb { background:var(--well); }
+.fcard { background:var(--panel); border:2px solid var(--edge); border-radius:20px;
+  box-shadow:var(--shadow); }
+.fcard:hover { border-color:#e0b43a; }
+.fcard.done { border-color:#8fc39a; }
+.fcard.done .fthumb { background:#dcebd6; }
+.card.gone .thumbwrap { background:repeating-linear-gradient(45deg,
+    var(--well), var(--well) 8px, var(--slate-lo) 8px, var(--slate-lo) 16px); }
+
+/* Buttons: pills, with leaf green for the main one. */
+button.act { border-radius:999px; font-weight:700; }
+button.act.primary { background:var(--leaf); border-color:var(--leaf); color:#263a1f; }
+button.act.primary:hover { background:#93d48d; border-color:#93d48d; color:#263a1f; }
+.cont .cplay { background:var(--leaf); color:#263a1f; }
+input[type=search], select, .sheet .mk input, .tgrow input, #tgfilter { border-radius:999px; }
+.sheet .mk input, .tgrow input, #tgfilter { padding-left:12px; padding-right:12px; }
+
+/* The squish: a press presses the button in, and letting go springs it
+   back a little past its size, like a soft rubber key. */
+button, .chip { transition:transform .22s cubic-bezier(.34,1.8,.64,1); }
+button:not(:disabled):active, .chip:active { transform:scale(.92);
+  transition-duration:.06s; }
+/* Some buttons already move: the chapter bar and mark ticks grow on hover. */
+#pchap button, #pmstrip button { transition:transform .1s; }
+#pchap button:active, #pmstrip button:active { transform:none; }
+@media (prefers-reduced-motion: reduce) {
+  button, .chip { transition:none; }
+  button:not(:disabled):active, .chip:active { transform:none; }
+}

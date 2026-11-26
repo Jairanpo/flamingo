@@ -41,7 +41,6 @@ func TestAssetsServed(t *testing.T) {
 		"/assets/app.js":             "ON_DEVICE",
 		"/assets/app.css":            "--accent:#EB9FEF",
 		"/assets/auth.css":           "--accent:#EB9FEF",
-		"/assets/floor.svg":          "<svg",
 		"/assets/favicon.svg":        "<svg",
 		"/assets/fonts/outfit.woff2": "wOF2",
 		"/assets/fonts/nunito.woff2": "wOF2",
@@ -56,7 +55,8 @@ func TestAssetsServed(t *testing.T) {
 			t.Errorf("%s type = %s", path, w.Header().Get("Content-Type"))
 		}
 		if csp := w.Header().Get("Content-Security-Policy"); !strings.Contains(csp, "script-src 'self'") ||
-			!strings.Contains(csp, "media-src 'self' blob:") {
+			!strings.Contains(csp, "media-src 'self' blob: http://127.0.0.1:8421") ||
+			!strings.Contains(csp, "connect-src 'self' http://127.0.0.1:8421") {
 			t.Errorf("csp = %s", csp)
 		}
 	}

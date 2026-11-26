@@ -107,14 +107,21 @@ func sameOrigin(next http.Handler) http.Handler {
 	})
 }
 
+// agentOrigin is where the page finds this computer's helper; app.js has
+// the same address (AGENT_URL).
+const agentOrigin = "http://127.0.0.1:8421"
+
 func securityHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h := w.Header()
 		// Scripts only from this server. Inline styles are allowed: the page
 		// sizes progress bars with style attributes. Streams play from
-		// MediaSource blob: URLs.
+		// MediaSource blob: URLs. The page also talks to this computer's
+		// helper (agentOrigin): calls, downloaded videos and subtitles.
 		h.Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; "+
-			"style-src 'self' 'unsafe-inline'; img-src 'self' data:; media-src 'self' blob:; "+
+			"connect-src 'self' "+agentOrigin+"; "+
+			"style-src 'self' 'unsafe-inline'; img-src 'self' data:; "+
+			"media-src 'self' blob: "+agentOrigin+"; "+
 			"frame-ancestors 'none'; form-action 'self'; base-uri 'none'; object-src 'none'")
 		h.Set("X-Content-Type-Options", "nosniff")
 		h.Set("Referrer-Policy", "same-origin")

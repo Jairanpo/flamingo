@@ -585,14 +585,9 @@ function paintDash() {
   const n = state.pins.length, max = state.maxPins;
   const items = state.pins.map(p => ({p, s: state.sources.find(x => x.id === p.id)}))
                           .filter(x => x.s);
-  // The oldest Focus with something left to watch is the one to continue.
-  const hero = items.find(x => x.p.next);
   let bars = "";
   for (let i = 0; i < max; i++) bars += `<i class="${i < n ? (n >= 4 ? "on warm" : "on") : ""}"></i>`;
   box.innerHTML = `
-    <div class="depth" aria-hidden="true">
-      <div class="dl far"></div><div class="dl mid"></div><div class="dl near"></div>
-    </div>
     <div class="fhead">
       <div class="ftitle"><h1>Your Focus</h1><p class="say"></p></div>
       <div class="fmeter" role="img" aria-label="${n} of ${max} Focus places used">${bars}</div>
@@ -602,69 +597,19 @@ function paintDash() {
   box.querySelector(".say").textContent = LEVELS[Math.min(n, LEVELS.length - 1)];
   $("#dall").onclick = () => pick("all");
   const body = box.querySelector(".fbody");
-  if (hero) body.append(heroCard(hero.s, hero.p));
-  const rest = items.filter(x => x !== hero);
-  if (rest.length) {
-    const g = document.createElement("div");
-    g.className = "fcards";
-    for (const x of rest) g.append(focusCard(x.s, x.p));
-    body.append(g);
-  }
+  // One card each, all alike: no Focus outranks the others.
+  const g = document.createElement("div");
+  g.className = "fcards";
+  for (const x of items) g.append(focusCard(x.s, x.p));
+  body.append(g);
 }
 
 const dropFocus = async s => { await post("/api/pin", {source: s.id, value: false}); refresh(); };
 const markDone = async s => { await post("/api/complete", {source: s.id, value: true}); refresh(); };
 const srcLabel = s => s.kind === "channel" ? `${s.name} — all videos` : s.name;
 
-// The one to continue: big, warm, and first.
-function heroCard(s, p) {
-  const v = p.next;
-  const el = document.createElement("section");
-  el.className = "fhero";
-  const left = Math.max(0, s.total - s.seen);
-  const pct = s.total ? Math.round(100 * s.seen / s.total) : 0;
-  el.innerHTML = `
-    <button class="fthumb" title="Play the next one">
-      <img loading="lazy" src="/thumb/${v.id}" alt="">
-      <span class="play">${PLAY}</span>
-      ${v.duration ? `<span class="dur">${fmtDur(v.duration)}</span>` : ""}
-    </button>
-    <div class="finfo">
-      <span class="k">Continue here</span>
-      <h2 class="t"></h2>
-      <button class="src" title="Open it"></button>
-      <div class="fprog"><span class="track"><i style="width:${pct}%"></i></span>
-        <span class="n">${s.seen} of ${s.total} watched${left ? ` · ${left} to go` : ""}</span></div>
-      <div class="facts">
-        <button class="fplay">${PLAY} Play next</button>
-        <button class="fopen">Open</button>
-        <button class="link fdrop" title="Take it off your Focus; it goes back to the backlog">Remove from Focus</button>
-      </div>
-    </div>`;
-  el.querySelector(".t").textContent = v.title;
-  el.querySelector(".src").textContent = `${glyph(s)} ${srcLabel(s)}`;
-  el.querySelector(".fthumb").onclick = el.querySelector(".fplay").onclick = () => open_(v, s.id);
-  el.querySelector(".src").onclick = el.querySelector(".fopen").onclick = () => pick("s:" + s.id);
-  el.querySelector(".fdrop").onclick = () => dropFocus(s);
-  if (p.after && p.after.length) {
-    const q = document.createElement("div");
-    q.className = "fthen";
-    q.innerHTML = `<span class="k2">Then</span>`;
-    for (const a of p.after) {
-      const r = document.createElement("button");
-      r.className = "fq";
-      r.innerHTML = `<span class="t"></span><span class="d">${a.duration ? fmtDur(a.duration) : ""}</span>`;
-      r.querySelector(".t").textContent = a.title;
-      r.onclick = () => open_(a, s.id);
-      q.append(r);
-    }
-    el.querySelector(".finfo").append(q);
-  }
-  return el;
-}
-
-// The others: smaller and cooler. One you have finished turns green and
-// offers to put itself away in Completed.
+// One Focus. One you have finished turns green and offers to put itself
+// away in Completed.
 function focusCard(s, p) {
   const el = document.createElement("article");
   const v = p.next;
@@ -1596,7 +1541,7 @@ async function openDownloads() {
     : agent.state === "other"
     ? `This computer's helper (${agent.otherName}) is paired to another ` +
       "account. Pair it to yours with a code below."
-    : agent.lna === "prompt" || agent.lna === "denied"
+    : agent.lna === "denied"
     ? "No helper answered. Already set it up? Then the browser is blocking this " +
       "page from reaching apps on this computer: click the icon left of the " +
       "address → Site settings → Local network access → Allow, then reload. " +
