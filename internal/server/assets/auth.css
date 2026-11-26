@@ -8,9 +8,10 @@
   src:url(/assets/fonts/nunito.woff2) format("woff2");
   unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD; }
 :root {
-  /* Flamingo palette (see app.css): deep navy, warm white text, pink accents. */
-  --bg:#0e131c; --panel:#161b25; --edge:#4a4554; --ink:#f2e8d5; --dim:#b3a993;
-  --accent:#EB9FEF; --on-accent:#0e131c; --bad:#ff8a9a; --shadow:0 1px 3px rgba(0,0,0,.5);
+  /* Flamingo palette (see app.css): walnut desk, cream text, leaf green;
+     the name stays flamingo pink. */
+  --bg:#1a1511; --panel:#231c17; --edge:#4a3d31; --ink:#ebe1ca; --dim:#b0a38c;
+  --accent:#8fd08a; --on-accent:#1f2e1a; --flamingo:#EB9FEF; --bad:#ff8a9a; --shadow:0 1px 3px rgba(0,0,0,.5);
   color-scheme: dark;
 }
 * { box-sizing:border-box; }
@@ -19,8 +20,8 @@ body { margin:0; min-height:100vh; display:flex; align-items:center; justify-con
        font:500 15.5px/1.5 "Nunito",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; }
 .card { width:100%; max-width:340px; background:var(--panel); border:1px solid var(--edge);
         border-radius:12px; padding:28px 24px; box-shadow:var(--shadow); }
-.brand { font-weight:650; letter-spacing:-.01em; font-size:20px; margin:0 0 4px; color:var(--accent); }
-.brand span { color:var(--accent); }
+.brand { font-weight:650; letter-spacing:-.01em; font-size:20px; margin:0 0 4px; color:var(--flamingo); }
+.brand span { color:var(--flamingo); }
 .sub { color:var(--dim); margin:0 0 20px; font-size:14px; }
 label { display:block; font-size:13px; color:var(--dim); margin:14px 0 4px; }
 input { width:100%; background:var(--bg); color:var(--ink); border:1px solid var(--edge);

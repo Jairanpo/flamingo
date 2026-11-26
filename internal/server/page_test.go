@@ -39,8 +39,8 @@ func TestAssetsServed(t *testing.T) {
 	h := s.Handler()
 	for path, want := range map[string]string{
 		"/assets/app.js":             "ON_DEVICE",
-		"/assets/app.css":            "--accent:#EB9FEF",
-		"/assets/auth.css":           "--accent:#EB9FEF",
+		"/assets/app.css":            "--flamingo:#EB9FEF",
+		"/assets/auth.css":           "--flamingo:#EB9FEF",
 		"/assets/favicon.svg":        "<svg",
 		"/assets/fonts/outfit.woff2": "wOF2",
 		"/assets/fonts/nunito.woff2": "wOF2",

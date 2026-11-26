@@ -210,6 +210,29 @@
 
 <div id="player">
   <button id="pclose" title="Close (Esc)">&times;</button>
+  <button id="pshrink" title="Keep listening while you browse" hidden>▾ Mini player</button>
+  <!-- Audio plays in this bar at the foot of the page, so you can browse
+       while you listen; the full view is one press away. -->
+  <div id="mbar">
+    <button id="mopen" class="mwho" title="Open the full player">
+      <img id="mthumb" alt=""><span class="mtext"><b id="mtitle"></b><span id="msub"></span>
+        <span id="mstatus" hidden></span></span></button>
+    <div class="mmid">
+      <div class="mctl">
+        <button id="mback" title="Back 15 seconds">↺ 15</button>
+        <button id="mplay" title="Play or pause"></button>
+        <button id="mfwd" title="Forward 15 seconds">15 ↻</button>
+      </div>
+      <div class="mtime"><span id="mcur">0:00</span>
+        <input id="mseek" type="range" min="0" max="0" step="1" value="0" aria-label="Position">
+        <span id="mdur">0:00</span></div>
+    </div>
+    <div class="mend">
+      <button id="mspeed" title="Speed">1×</button>
+      <button id="mfull" title="Open the full player">⤢</button>
+      <button id="mclose" title="Stop and close">&times;</button>
+    </div>
+  </div>
   <video id="pvideo" controls playsinline></video>
   <div id="pchap" hidden></div>
   <div id="pmstrip"></div>

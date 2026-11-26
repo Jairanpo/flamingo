@@ -781,6 +781,21 @@ function card(v, seq) {
   main.onclick = () => open_(v);
   main.disabled = v.unavailable && !v.have;
   row.appendChild(main);
+  // A file that is only sound already plays in the mini player: say so.
+  // Anything else can be listened to as well: its file without the
+  // picture, or its sound alone streamed.
+  if (v.have && v.audio) {
+    main.textContent = "♪ Listen";
+    main.title = "Play the sound file on this computer";
+  } else if (!v.unavailable) {
+    const ear = document.createElement("button");
+    ear.className = "act listen";
+    ear.textContent = "♪ Listen";
+    ear.title = v.have ? "Play just the sound of the copy on this computer, and keep browsing"
+                       : "Stream just the sound, and keep browsing";
+    ear.onclick = () => open_(v, undefined, true);
+    row.appendChild(ear);
+  }
 
   // Everything else lives behind one ⋯ button, so the card stays calm.
   const more = document.createElement("button");
@@ -921,7 +936,9 @@ function showDesc(text) {
 let current = null, saveTimer = null;
 // Share of a video past which it counts as finished.
 const FINISHED = 0.92;
-function open_(v, from) {
+// listen: sound only, in the mini player. A file on disk plays as it is
+// (its picture just stays hidden); otherwise only the audio is streamed.
+function open_(v, from, listen = false) {
   // Resuming a finished video lands on its last frame, which fires "ended"
   // and shuts the player straight away, so start those over instead.
   const at = v.duration && v.progress / v.duration >= FINISHED ? 0 : v.progress || 0;
@@ -944,6 +961,14 @@ function open_(v, from) {
   showMarks([], v.id);
   api(`/api/marks/${v.id}`).then(d => showMarks(d.marks, v.id)).catch(() => {});
   togglMount(v, from);
+  // Audio plays in the bar at the foot of the page; video gets the stage.
+  const audio = !!(v.have && v.audio) || listen;
+  if (audio) vid.poster = `/thumb/${v.id}`; else vid.removeAttribute("poster");
+  $("#pshrink").hidden = !audio;
+  $("#mthumb").src = `/thumb/${v.id}`;
+  $("#mtitle").textContent = v.title;
+  $("#msub").textContent = v.channel || "";
+  setMini(audio);
   $("#player").classList.add("on");
   vid.onerror = null;
   if (v.have) {
@@ -974,7 +999,7 @@ function open_(v, from) {
     api(`/api/chapters/${v.id}`).then(d => showChapters(d.chapters, v.id))
                                 .catch(() => {});
   } else {
-    startStream({...v, progress: at}, vid).catch(e => {
+    startStream({...v, progress: at}, vid, false, listen).catch(e => {
       if (current?.id === v.id) streamStatus(`Couldn't stream: ${e.message}`);
     });
   }
@@ -1103,6 +1128,10 @@ function fileMissing(v) {
 function streamStatus(msg) {
   $("#pstatus").hidden = !msg;
   $("#pstatus").textContent = msg || "";
+  // The mini bar has room for trouble, not for the steady "Streaming" note.
+  const say = msg && !msg.startsWith("Streaming") ? msg : "";
+  $("#mstatus").hidden = !say;
+  $("#mstatus").textContent = say;
 }
 
 async function rangeBytes(url, lo, hi) {
@@ -1217,10 +1246,11 @@ function switchQuality(v) {
   });
 }
 
-async function startStream(v, vid, paused = false) {
+async function startStream(v, vid, paused = false, audioOnly = false) {
   const me = stream = {alive: true, tracks: []};
   streamStatus("Finding the stream…");
   const meta = await api(`/api/stream/${v.id}`);
+  if (audioOnly) return startAudioStream(me, v, vid, meta, paused);
   // Above 1080p the picture is AV1, which some browsers cannot decode;
   // those heights are simply not offered.
   const heights = Object.keys(meta.videos).map(Number).sort((a, b) => a - b)
@@ -1228,17 +1258,34 @@ async function startStream(v, vid, paused = false) {
   if (!heights.length) throw new Error("this browser cannot play any of its video");
   if (!MediaSource.isTypeSupported(meta.audio))
     throw new Error(`this browser cannot play ${meta.audio}`);
-  const fit = heights.filter(x => x <= (quality || meta.default));
-  const h = fit.length ? fit[fit.length - 1] : heights[0];
-  meta.video = meta.videos[h];
+  return playTracks(me, v, vid, meta, paused, heights);
+}
+
+// Sound only: the same pipeline, with the audio track alone.
+async function startAudioStream(me, v, vid, meta, paused) {
+  if (!MediaSource.isTypeSupported(meta.audio))
+    throw new Error(`this browser cannot play ${meta.audio}`);
+  me.audioOnly = true;
+  return playTracks(me, v, vid, meta, paused, null);
+}
+
+// heights: the picture sizes on offer, or null for sound only.
+async function playTracks(me, v, vid, meta, paused, heights) {
+  const kinds = heights ? ["video", "audio"] : ["audio"];
+  let h = 0;
+  if (heights) {
+    const fit = heights.filter(x => x <= (quality || meta.default));
+    h = fit.length ? fit[fit.length - 1] : heights[0];
+    meta.video = meta.videos[h];
+  }
   if (!me.alive) return;
-  paintQuality(v, heights, h);
+  if (heights) paintQuality(v, heights, h);
   showChapters(meta.chapters, v.id);
   const ms = me.ms = new MediaSource();
   me.objectUrl = URL.createObjectURL(ms);
   vid.src = me.objectUrl;
   await new Promise(r => ms.addEventListener("sourceopen", r, {once: true}));
-  const idx = await Promise.all(["video", "audio"].map(async kind => {
+  const idx = await Promise.all(kinds.map(async kind => {
     const url = kind === "video" ? `/stream/${v.id}/video/${h}` : `/stream/${v.id}/audio`;
     return {url, kind, ...(await readIndex(url))};
   }));
@@ -1298,7 +1345,7 @@ async function startStream(v, vid, paused = false) {
     if (tries > 3) return streamStatus(`Stream stopped: ${why}`);
     const at = vid.currentTime, wasPaused = me.paused;
     stopStream();
-    startStream({...v, progress: at, tries}, vid, wasPaused).catch(e => {
+    startStream({...v, progress: at, tries}, vid, wasPaused, me.audioOnly).catch(e => {
       if (current?.id === v.id) streamStatus(`Couldn't stream: ${e.message}`);
     });
   };
@@ -1333,6 +1380,7 @@ try { speed = parseFloat(localStorage.getItem("flamingo.speed")) || 1; } catch (
 function paintSpeed() {
   for (const b of $("#pspeed").children)
     b.classList.toggle("on", parseFloat(b.dataset.r) === speed);
+  $("#mspeed").textContent = speed + "×";
 }
 function setSpeed(r) {
   speed = Math.min(4, Math.max(0.25, Math.round(r * 100) / 100));
@@ -1354,7 +1402,7 @@ $("#pvideo").addEventListener("ratechange", e => {
 });
 $("#pvideo").addEventListener("loadedmetadata", () => setSpeed(speed));
 document.addEventListener("keydown", e => {
-  if (!$("#player").classList.contains("on") || e.target.matches?.("input, textarea")) return;
+  if (!playerFull() || e.target.matches?.("input, textarea")) return;
   if (e.key === ">") setSpeed(speed + 0.25);
   else if (e.key === "<") setSpeed(speed - 0.25);
 });
@@ -1419,7 +1467,7 @@ function addMark() {
 $("#pmarkadd").onclick = addMark;
 $("#pvideo").addEventListener("durationchange", paintMarkStrip);
 document.addEventListener("keydown", e => {
-  if (!$("#player").classList.contains("on") || e.target.matches?.("input, textarea")) return;
+  if (!playerFull() || e.target.matches?.("input, textarea")) return;
   if (e.key === "m" || e.key === "M") addMark();
 });
 
@@ -1498,11 +1546,48 @@ function close_() {
   stopStream();
   vid.pause(); vid.removeAttribute("src"); vid.load();
   $("#player").classList.remove("on");
+  setMini(false);
+  vid.removeAttribute("poster");
   togglUnmount();
   showChapters([], current?.id);
   current = null; refresh();
 }
 $("#pclose").onclick = close_;
+
+/* ---- mini player ----
+   Like a music app's bar at the foot of the window: the same <video>
+   element keeps playing (hidden; it is only sound), while you go on
+   browsing. Progress, marks and "watched" all work as in the full view. */
+const playerFull = () => $("#player").classList.contains("on") &&
+                         !$("#player").classList.contains("mini");
+function setMini(on) {
+  $("#player").classList.toggle("mini", on);
+  document.body.classList.toggle("mini-on", on);
+}
+const PAUSE = `<svg viewBox="0 0 24 24" width="1em" height="1em" aria-hidden="true">
+  <path d="M6 4h4v16H6zM14 4h4v16h-4z" fill="currentColor"/></svg>`;
+function paintMini() {
+  const vid = $("#pvideo");
+  $("#mplay").innerHTML = vid.paused ? PLAY : PAUSE;
+  $("#mplay").title = vid.paused ? "Play" : "Pause";
+  const d = isFinite(vid.duration) ? vid.duration : 0;
+  const seek = $("#mseek");
+  seek.max = Math.floor(d);
+  if (!seek.matches(":active")) seek.value = Math.floor(vid.currentTime);
+  seek.style.setProperty("--p", d ? `${100 * vid.currentTime / d}%` : "0%");
+  $("#mcur").textContent = fmtDur(vid.currentTime) || "0:00";
+  $("#mdur").textContent = fmtDur(d) || "0:00";
+}
+for (const ev of ["play", "pause", "timeupdate", "durationchange", "emptied"])
+  $("#pvideo").addEventListener(ev, paintMini);
+$("#mplay").onclick = () => { const v = $("#pvideo"); v.paused ? v.play().catch(()=>{}) : v.pause(); };
+$("#mback").onclick = () => { $("#pvideo").currentTime -= 15; };
+$("#mfwd").onclick = () => { $("#pvideo").currentTime += 15; };
+$("#mseek").oninput = e => { $("#pvideo").currentTime = +e.target.value; };
+$("#mspeed").onclick = () => setSpeed(SPEEDS[(SPEEDS.indexOf(speed) + 1) % SPEEDS.length]);
+$("#mopen").onclick = $("#mfull").onclick = () => setMini(false);
+$("#pshrink").onclick = () => setMini(true);
+$("#mclose").onclick = close_;
 $("#pvideo").addEventListener("ended", async () => {
   if (current && !current.watched) {
     current.watched = true;
@@ -1517,7 +1602,7 @@ document.addEventListener("keydown", e => {
   else if ($("#tgmodal").classList.contains("on")) closeToggl();
   else if ($("#srcmodal").classList.contains("on")) closeSrc();
   else if ($("#modal").classList.contains("on")) closeModal();
-  else if ($("#player").classList.contains("on")) close_();
+  else if (playerFull()) close_();
   else dismissAllJobs();
 });
 
