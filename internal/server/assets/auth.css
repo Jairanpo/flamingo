@@ -8,10 +8,10 @@
   src:url(/assets/fonts/nunito.woff2) format("woff2");
   unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD; }
 :root {
-  /* Flamingo palette (see app.css): walnut desk, cream text, leaf green;
+  /* Flamingo palette (see app.css): night pine, cream text, leaf green;
      the name stays flamingo pink. */
-  --bg:#1a1511; --panel:#231c17; --edge:#4a3d31; --ink:#ebe1ca; --dim:#b0a38c;
-  --accent:#8fd08a; --on-accent:#1f2e1a; --flamingo:#EB9FEF; --bad:#ff8a9a; --shadow:0 1px 3px rgba(0,0,0,.5);
+  --bg:#101a15; --panel:#16231c; --edge:#34483b; --ink:#ebe1ca; --dim:#a9b09b;
+  --accent:#8fd08a; --on-accent:#13201a; --flamingo:#EB9FEF; --bad:#ff8a9a; --shadow:0 1px 3px rgba(0,0,0,.5);
   color-scheme: dark;
 }
 * { box-sizing:border-box; }

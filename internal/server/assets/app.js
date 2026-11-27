@@ -429,7 +429,8 @@ $("#whosrc").onclick = () => {
 function paintShelve(sources) {
   const b = $("#shelve");
   const src = state.source && sources.find(s => s.id === state.source);
-  b.hidden = $("#forget").hidden = $("#pin").hidden = $("#complete").hidden = !src;
+  b.hidden = $("#forget").hidden = $("#pin").hidden = $("#complete").hidden =
+    $("#srcrefresh").hidden = !src;
   if (!src) return;
   const pb = $("#pin"), full = !src.pinned && state.pins.length >= state.maxPins;
   pb.textContent = src.pinned ? "Remove from Focus"
@@ -452,6 +453,15 @@ function paintShelve(sources) {
     : "Put it away for later: out of the picker, Everything and full syncs. " +
       "Still tracked, and still under Shelved in the picker.";
 }
+// The same job as adding it again, on the same cards; the view reloads when
+// it settles, through pollJobs.
+$("#srcrefresh").onclick = async () => {
+  const src = state.sources.find(s => s.id === state.source);
+  if (!src) return;
+  try { await post("/api/sources/refresh", {source: src.id}); }
+  catch (e) { alert(e.message); return; }
+  pollJobs();
+};
 $("#shelve").onclick = async () => {
   const src = state.sources.find(s => s.id === state.source);
   if (!src) return;
@@ -938,14 +948,22 @@ let current = null, saveTimer = null;
 const FINISHED = 0.92;
 // listen: sound only, in the mini player. A file on disk plays as it is
 // (its picture just stays hidden); otherwise only the audio is streamed.
-function open_(v, from, listen = false) {
+// paused: load it and wait for a press (a reload brings the player back
+// this way: browsers refuse sound nobody asked for).
+function open_(v, from, listen = false, paused = false) {
   // Resuming a finished video lands on its last frame, which fires "ended"
   // and shuts the player straight away, so start those over instead.
   const at = v.duration && v.progress / v.duration >= FINISHED ? 0 : v.progress || 0;
-  current = v;
   const vid = $("#pvideo");
+  // Silence what was playing now, keeping its place: a stream can take a
+  // while to find, and until it replaces the source the old one would play
+  // on under the new title.
+  if (current && current.id !== v.id && vid.currentTime)
+    post(`/api/progress/${current.id}`, {value: vid.currentTime}).catch(()=>{});
+  current = v;
   vid.querySelectorAll("track").forEach(t => t.remove());
   stopStream();
+  vid.pause(); vid.removeAttribute("src"); vid.load();
   $("#ptitle").textContent = v.title;
   $("#psub").textContent = [v.channel, fmtDate(v), fmtDur(v.duration)]
                              .filter(Boolean).join(" · ");
@@ -969,6 +987,7 @@ function open_(v, from, listen = false) {
   $("#mtitle").textContent = v.title;
   $("#msub").textContent = v.channel || "";
   setMini(audio);
+  rememberPlaying(audio ? {v, from, listen, t: at} : null);
   $("#player").classList.add("on");
   vid.onerror = null;
   if (v.have) {
@@ -994,12 +1013,12 @@ function open_(v, from, listen = false) {
     vid.crossOrigin = "anonymous";
     vid.src = localURL(`/media/${v.id}`);
     vid.currentTime = at;
-    vid.play().catch(()=>{});
+    if (!paused) vid.play().catch(()=>{});
     attachSubs(v.id, vid);
     api(`/api/chapters/${v.id}`).then(d => showChapters(d.chapters, v.id))
                                 .catch(() => {});
   } else {
-    startStream({...v, progress: at}, vid, false, listen).catch(e => {
+    startStream({...v, progress: at}, vid, paused, listen).catch(e => {
       if (current?.id === v.id) streamStatus(`Couldn't stream: ${e.message}`);
     });
   }
@@ -1007,6 +1026,7 @@ function open_(v, from, listen = false) {
   saveTimer = setInterval(() => {
     if (!current || vid.paused) return;
     post(`/api/progress/${current.id}`, {value: vid.currentTime}).catch(()=>{});
+    notePlace(vid.currentTime);
     markIfFinished(vid);
   }, 5000);
 }
@@ -1547,6 +1567,7 @@ function close_() {
   vid.pause(); vid.removeAttribute("src"); vid.load();
   $("#player").classList.remove("on");
   setMini(false);
+  rememberPlaying(null);
   vid.removeAttribute("poster");
   togglUnmount();
   showChapters([], current?.id);
@@ -1588,6 +1609,48 @@ $("#mspeed").onclick = () => setSpeed(SPEEDS[(SPEEDS.indexOf(speed) + 1) % SPEED
 $("#mopen").onclick = $("#mfull").onclick = () => setMini(false);
 $("#pshrink").onclick = () => setMini(true);
 $("#mclose").onclick = close_;
+
+/* What the mini player was playing survives a reload: kept in this
+   browser only (another computer has its own), with the second it was at.
+   Closing the player forgets it. */
+const PLAYING = "flamingo.playing";
+function rememberPlaying(rec) {
+  try {
+    if (!rec) return localStorage.removeItem(PLAYING);
+    const {description, ...v} = rec.v;   // the description is fetched again
+    localStorage.setItem(PLAYING, JSON.stringify({...rec, v}));
+  } catch (e) {}
+}
+function notePlace(t) {
+  try {
+    const rec = JSON.parse(localStorage.getItem(PLAYING) || "null");
+    if (!rec || rec.v.id !== current?.id) return;
+    rec.t = Math.floor(t);
+    localStorage.setItem(PLAYING, JSON.stringify(rec));
+  } catch (e) {}
+}
+$("#pvideo").addEventListener("pause", e => notePlace(e.target.currentTime));
+addEventListener("pagehide", () => {
+  if (!current || !document.body.classList.contains("mini-on")) return;
+  const t = $("#pvideo").currentTime;
+  notePlace(t);
+  // The server keeps its place too, even if the page is gone by the time
+  // this lands.
+  fetch(`/api/progress/${current.id}`, {method: "POST", keepalive: true,
+    headers: {"Content-Type": "application/json"}, body: JSON.stringify({value: t})})
+    .catch(() => {});
+});
+// Back in the bar, paused where it was. A file on disk needs this
+// computer's helper; without one, the sound is streamed instead.
+function resumePlaying() {
+  let rec = null;
+  try { rec = JSON.parse(localStorage.getItem(PLAYING) || "null"); } catch (e) {}
+  if (!rec?.v?.id || current) return;
+  const v = {...rec.v, progress: rec.t || 0};
+  let listen = !!rec.listen;
+  if (v.have && agent.state !== "found") { v.have = false; listen = true; }
+  open_(v, rec.from, listen, true);
+}
 $("#pvideo").addEventListener("ended", async () => {
   if (current && !current.watched) {
     current.watched = true;
@@ -2302,7 +2365,7 @@ function renderJobs(jobs) {
       <div class="t"></div><div class="d"></div>
       <div class="track"><i style="width:${pct}%"></i></div>`;
     el.querySelector(".t").textContent =
-      j.kind === "source" ? `＋ ${j.title}` : j.title;
+      j.kind === "source" ? `＋ ${j.title}` : j.kind === "refresh" ? `↻ ${j.title}` : j.title;
     el.querySelector(".d").textContent =
       j.state === "error" ? j.error : (j.state === "done" ? "done" : j.detail);
     el.querySelector(".x").onclick = e => { e.stopPropagation(); dismissJob(j); };
@@ -2380,6 +2443,7 @@ refresh();
 // The page shows at once, streaming; once this computer's agent answers,
 // it shows again with what is on disk and the download menus.
 findAgent().then(() => {
+  resumePlaying();
   if (agent.state !== "found") {
     $("#dlcfg").textContent = "⬇ set up downloads";
     $("#dlcfg").title = "This computer has no Flamingo helper yet: set it up to download";

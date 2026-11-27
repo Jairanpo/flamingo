@@ -24,6 +24,40 @@ func (s *Server) routesSources(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/jobs/clear", s.requireUser(s.apiJobsClear))
 	mux.HandleFunc("POST /api/sources", s.requireUser(s.apiAddSources))
 	mux.HandleFunc("POST /api/sources/browse", s.requireUser(s.apiBrowse))
+	mux.HandleFunc("POST /api/sources/refresh", s.requireUser(s.apiRefreshSource))
+}
+
+// apiRefreshSource takes {source} and lists that one source again, as
+// `flamingo sync --source` does, on the same queue as adding. Only a source
+// the user tracks: anyone else's would be a free way to make us call YouTube.
+func (s *Server) apiRefreshSource(w http.ResponseWriter, r *http.Request) {
+	id := strings.TrimSpace(str(body(r), "source"))
+	if id == "" || len(id) > 64 {
+		fail(w, http.StatusBadRequest, "which source?")
+		return
+	}
+	user := CurrentUser(r).ID
+	var mine bool
+	err := s.pool.QueryRow(r.Context(), `
+		SELECT EXISTS (SELECT 1 FROM user_channels WHERE user_id = $1 AND chan_id = $2)
+		    OR EXISTS (SELECT 1 FROM user_playlists WHERE user_id = $1 AND play_id = $2)
+		    OR EXISTS (SELECT 1 FROM user_picks WHERE user_id = $1
+		                  AND $3 || chan_id = $2)`,
+		user, id, catalog.PicksPrefix).Scan(&mine)
+	if err != nil {
+		fail(w, http.StatusInternalServerError, "could not check the source")
+		return
+	}
+	if !mine {
+		fail(w, http.StatusNotFound, "you don't track that source")
+		return
+	}
+	targets, _, err := s.jobs.Cat.Targets(r.Context(), catalog.SyncOptions{Source: id})
+	if err != nil || len(targets) == 0 {
+		fail(w, http.StatusNotFound, "nothing to refresh")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "job": s.jobs.EnqueueRefresh(user, targets[0])})
 }
 
 func (s *Server) apiJobs(w http.ResponseWriter, r *http.Request) {

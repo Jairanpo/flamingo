@@ -8,23 +8,24 @@
   src:url(/assets/fonts/nunito.woff2) format("woff2");
   unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD; }
 :root {
-  /* Paper on a wooden desk. The room is dark walnut; what you read sits on
+  /* Paper notes in a village at night. The room is deep pine green (moved
+     off walnut, which read like claude.ai); what you read sits on
      soft cream paper (the --paper-* tokens, used by "Paper cards" below),
      dimmed so it never glares. One accent, leaf green, everywhere: light
-     on the wood, deep on the paper. Flamingo pink is the signature: the
+     on the pine, deep on the paper. Flamingo pink is the signature: the
      name, the favicon, your avatar's ring, the Toggl button. */
-  --bg:#1a1511; --panel:#231c17; --well:#2c241d; --edge:#4a3d31;
-  --ink:#ebe1ca; --dim:#b0a38c; --accent:#8fd08a; --on-accent:#1f2e1a;
+  --bg:#101a15; --panel:#16231c; --well:#1c2b23; --edge:#34483b;
+  --ink:#ebe1ca; --dim:#a9b09b; --accent:#8fd08a; --on-accent:#13201a;
   --cream:#ebe1ca; --hair:rgba(235,225,202,.12);
-  --blush:#c3e6b4; --slate:#3d3229; --slate-lo:rgba(120,96,72,.24);
-  --slate-hi:#4d4034; --ok:#7fd4a8; --bad:#ff8a9a; --shadow:0 1px 3px rgba(0,0,0,.5);
-  --flamingo:#EB9FEF; --on-flamingo:#1a1511;
+  --blush:#c3e6b4; --slate:#273b2f; --slate-lo:rgba(96,140,108,.20);
+  --slate-hi:#30483a; --ok:#7fd4a8; --bad:#ff8a9a; --shadow:0 1px 3px rgba(0,0,0,.5);
+  --flamingo:#EB9FEF; --on-flamingo:#101a15;
   /* The paper, toned down from #f4ecd8 so a page full of cards stays calm. */
   --paper:#e8ddc5; --paper-hi:#f1e8d4; --paper-well:#dcd0b4; --paper-edge:#cbb994;
   --paper-lip:#ad9970; --paper-ink:#56412f; --paper-dim:#85705b; --leaf:#7cc576;
-  /* Warm marks what to do now (Focus); a quiet sage settles what can wait. */
-  --warm:#F6C177; --on-warm:#1a1206; --cool:#aebba2;
-  --cool-lo:rgba(140,160,125,.10); --cool-edge:rgba(140,160,125,.28);
+  /* Warm marks what to do now (Focus); a quiet dusk blue settles what can wait. */
+  --warm:#F6C177; --on-warm:#1a1206; --cool:#a9b8c8;
+  --cool-lo:rgba(140,160,190,.10); --cool-edge:rgba(140,160,190,.28);
   color-scheme: dark;
 }
 * { box-sizing:border-box; }
@@ -103,10 +104,10 @@ main { padding:20px; flex:1; min-width:0; }
 #side .snone { color:var(--dim); padding:8px; font-size:13px; }
 /* Focus leads the sidebar: a warm-lit box, always open. Like the whole
    Focus zone it wears the town palette (see #dash): yellow, not pink. */
-#side .sfocus { --accent:#F2C94C; --blush:#F3E3C3; --well:#2a1d10;
+#side .sfocus { --accent:#F2C94C; --blush:#F3E3C3;
   display:flex; flex-direction:column; gap:4px; padding:10px; margin-bottom:14px;
   border-radius:12px; border:1px solid rgba(242,201,76,.50);
-  background:linear-gradient(180deg, rgba(242,201,76,.12), rgba(200,100,59,.05) 45%, #140e08); }
+  background:linear-gradient(180deg, rgba(242,201,76,.12), rgba(200,100,59,.05) 45%, var(--panel)); }
 #side .sfhead { display:flex; align-items:center; gap:8px; padding:2px 4px 6px; border-radius:6px;
   color:var(--accent); }
 #side .sfhead .nm { font-family:"Outfit",sans-serif; font-weight:700; font-size:15px; }
@@ -204,12 +205,12 @@ button.act:disabled { opacity:.55; cursor:default; }
    beams, leaves, sky. Kept dark; yellow takes pink's place in here. */
 #dash { --accent:#F2C94C; --on-accent:#1a1206; --blush:#F3E3C3;
         --straw:#D9A53A; --warm:#C8643B; --on-warm:#FFF3E0; --wood:#7A5634;
-        --sky:#7EC8E3; --ok:#8DBF6A; --well:#2a1d10; --edge:#5a4430;
+        --sky:#7EC8E3; --ok:#8DBF6A;
         --cool:#c9a77c; --cool-edge:rgba(122,86,52,.45);
         position:relative; isolation:isolate; overflow:hidden;
         margin:-20px; padding:22px 20px 28px;
         min-height:calc(100vh - var(--hh, 60px));
-        background:#15110d; }
+        background:#0c150f; }
 .fhead { display:flex; flex-wrap:wrap; align-items:flex-end; gap:12px 20px; margin:6px 0 24px; }
 .ftitle { flex:1; min-width:240px; }
 .ftitle h1 { margin:0; font-family:"Outfit",sans-serif; font-size:38px; font-weight:800;
@@ -217,13 +218,13 @@ button.act:disabled { opacity:.55; cursor:default; }
 .ftitle .say { margin:4px 0 0; color:var(--dim); }
 /* One bar per Focus place: yellow while there is room, terracotta when it is tight. */
 .fmeter { display:flex; gap:6px; }
-.fmeter i { width:22px; height:6px; border-radius:3px; background:#3a2a18; }
+.fmeter i { width:22px; height:6px; border-radius:3px; background:var(--slate); }
 .fmeter i.on { background:var(--accent); }
 .fmeter i.warm { background:var(--warm); }
 .fbody { display:flex; flex-direction:column; gap:22px; }
 #dash button { font:inherit; color:inherit; cursor:pointer; }
 .fthumb { position:relative; display:grid; place-items:center; padding:0; border:0;
-  aspect-ratio:16/9; border-radius:14px; overflow:hidden; background:#3a2a18; }
+  aspect-ratio:16/9; border-radius:14px; overflow:hidden; background:var(--well); }
 .fthumb img { position:absolute; inset:0; width:100%; height:100%; object-fit:cover;
   transition:transform .3s; }
 .fthumb:hover img { transform:scale(1.03); }
@@ -319,7 +320,7 @@ body.hasfold #jobs { bottom:62px; }
   .card.sinking, .srow.rising { transition:none; }
 }
 /* player overlay */
-#player { position:fixed; inset:0; background:rgba(20,16,13,.96); z-index:50;
+#player { position:fixed; inset:0; background:rgba(10,18,14,.96); z-index:50;
           display:none; flex-direction:column; padding:24px; }
 #player.on { display:flex; }
 #player video { width:100%; max-width:1100px; max-height:70vh; margin:0 auto;
@@ -428,7 +429,7 @@ body.hasfold #jobs { bottom:62px; }
        color:var(--on-accent); font-size:11px; font-weight:600; padding:2px 7px;
        border-radius:4px; font-variant-numeric:tabular-nums; }
 /* One overlay style, two sheets: add to a collection, and track a source. */
-.sheet { position:fixed; inset:0; background:rgba(20,16,13,.72); z-index:60;
+.sheet { position:fixed; inset:0; background:rgba(10,18,14,.72); z-index:60;
          display:none; align-items:center; justify-content:center; }
 .sheet.on { display:flex; }
 .sheet .box { background:var(--panel); border:1px solid var(--edge);

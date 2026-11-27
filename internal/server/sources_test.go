@@ -117,4 +117,16 @@ func TestSourcesAPI(t *testing.T) {
 	if code, _ := a.do("POST", "/api/sources/browse", map[string]any{"creator": "PLabc"}); code != 400 {
 		t.Errorf("a playlist is not a creator: %d", code)
 	}
+	// Refresh: only what you track, and it lands on your cards.
+	if code, _ := b.do("POST", "/api/sources/refresh", map[string]any{"source": tPl}); code != 404 {
+		t.Errorf("bob refreshed ana's playlist: %d", code)
+	}
+	if code, _ := a.do("POST", "/api/sources/refresh", map[string]any{}); code != 400 {
+		t.Errorf("refresh without a source: %d", code)
+	}
+	code, r = a.do("POST", "/api/sources/refresh", map[string]any{"source": tPl})
+	if code != 200 {
+		t.Fatalf("refresh: %d %v", code, r)
+	}
+	eq(t, "refresh card", r["job"].(map[string]any)["kind"], "refresh")
 }

@@ -28,6 +28,7 @@ type task struct {
 	job     *Job
 	ref     string
 	section string
+	target  *Target // set for a refresh: list a tracked source again
 }
 
 // Queue runs Add jobs one at a time. One worker, not several: each is a
@@ -68,7 +69,36 @@ func (q *Queue) Enqueue(user int32, ref, section string) Job {
 	j := &Job{ID: key, Title: strings.TrimSpace(ref), Kind: "source", State: "queued"}
 	q.jobs[user] = append(q.jobs[user], j)
 	select {
-	case q.tasks <- task{user, j, ref, section}:
+	case q.tasks <- task{user, j, ref, section, nil}:
+	default:
+		msg := "too many sources waiting; try again in a minute"
+		j.State, j.Detail, j.Error = "error", "failed", &msg
+	}
+	return *j
+}
+
+// EnqueueRefresh lists a tracked source again, the way a sync does: new
+// uploads come in, removed or private ones are marked. It shares the queue
+// and the cards with Enqueue, keyed by the source, so a second press joins.
+func (q *Queue) EnqueueRefresh(user int32, t Target) Job {
+	q.start()
+	key := "src:refresh:" + strings.ToLower(t.ID)
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	for _, j := range q.jobs[user] {
+		if j.ID == key && j.live() {
+			return *j
+		}
+	}
+	q.dropLocked(user, key)
+	title := t.Name
+	if title == "" {
+		title = t.ID
+	}
+	j := &Job{ID: key, Title: title, Kind: "refresh", State: "queued"}
+	q.jobs[user] = append(q.jobs[user], j)
+	select {
+	case q.tasks <- task{user: user, job: j, target: &t}:
 	default:
 		msg := "too many sources waiting; try again in a minute"
 		j.State, j.Detail, j.Error = "error", "failed", &msg
@@ -136,9 +166,22 @@ func (q *Queue) work() {
 			timeout = 15 * time.Minute
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), timeout)
-		res, err := q.Cat.Add(ctx, t.user, t.ref, t.section, func(d string) {
-			q.set(func() { j.Detail = d })
-		})
+		var res Result
+		var err error
+		if t.target != nil {
+			q.set(func() { j.Detail = "listing it again…" })
+			res, err = q.Cat.Sync(ctx, *t.target, 0)
+			if res.Name == "" {
+				res.Name = t.target.Name
+			}
+			if res.SourceID == "" {
+				res.SourceID = t.target.ID
+			}
+		} else {
+			res, err = q.Cat.Add(ctx, t.user, t.ref, t.section, func(d string) {
+				q.set(func() { j.Detail = d })
+			})
+		}
 		cancel()
 		q.set(func() {
 			if err != nil {
