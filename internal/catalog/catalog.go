@@ -407,7 +407,10 @@ func track(ctx context.Context, tx pgx.Tx, user int32, meta ytdlp.Meta, entries 
 			ON CONFLICT (user_id, chan_id) DO UPDATE SET usch_shelved = false`, user, res.SourceID)
 		return err
 	case "playlist":
-		_, err := tx.Exec(ctx, `INSERT INTO user_playlists (user_id, play_id) VALUES ($1, $2)
+		// A new one starts under its YouTube name; adding one again keeps
+		// the label the user chose.
+		_, err := tx.Exec(ctx, `INSERT INTO user_playlists (user_id, play_id, uspl_label, uspl_seen_title)
+			SELECT $1, play_id, play_title, play_title FROM playlists WHERE play_id = $2
 			ON CONFLICT (user_id, play_id) DO UPDATE SET uspl_shelved = false`, user, res.SourceID)
 		return err
 	case "picks":

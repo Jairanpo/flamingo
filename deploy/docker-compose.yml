@@ -29,6 +29,10 @@ services:
     build:
       context: ..
       dockerfile: deploy/Dockerfile
+      # Build on the host's network, not Docker's bridge: downloads during
+      # the build (Go modules, yt-dlp) then resolve names the way this
+      # computer does, which the bridge could not (VPN rules, IPv6-only DNS).
+      network: host
     restart: unless-stopped
     depends_on:
       db:

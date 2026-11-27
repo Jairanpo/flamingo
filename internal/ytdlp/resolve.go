@@ -38,7 +38,7 @@ func (r Runner) owner(ctx context.Context, url string) (Owner, error) {
 	defer cancel()
 	// -I 0 lists no entries: only the list's own metadata comes back.
 	args := append(r.base(), "--flat-playlist", "-I", "0", "-J")
-	out, err := exec.CommandContext(ctx, r.path(), append(args, url)...).Output()
+	out, err := r.command(ctx, append(args, url)...).Output()
 	if err != nil {
 		if ee, ok := err.(*exec.ExitError); ok {
 			return Owner{}, fmt.Errorf("yt-dlp %s: %s", url, strings.TrimSpace(string(ee.Stderr)))

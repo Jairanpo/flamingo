@@ -91,7 +91,7 @@ func (r Runner) base() []string {
 // not an error by itself: with --ignore-errors yt-dlp exits non-zero over a
 // single bad entry, so the caller judges by what came back.
 func (r Runner) lines(ctx context.Context, args ...string) ([]map[string]any, string, error) {
-	cmd := exec.CommandContext(ctx, r.path(), append(r.base(), args...)...)
+	cmd := r.command(ctx, append(r.base(), args...)...)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	err := cmd.Run()

@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -89,7 +88,7 @@ func (r Runner) Download(ctx context.Context, vid, mediaDir string, audio bool, 
 	}
 	args = append(args, "https://www.youtube.com/watch?v="+vid)
 
-	cmd := exec.CommandContext(ctx, r.path(), args...)
+	cmd := r.command(ctx, args...)
 	out, err := cmd.StdoutPipe()
 	if err != nil {
 		return "", err
@@ -154,7 +153,7 @@ func (r Runner) Subtitles(ctx context.Context, vid, mediaDir, langs string) erro
 		"--restrict-filenames", "--no-mtime",
 		"-o", OutputTemplate(mediaDir),
 		"https://www.youtube.com/watch?v="+vid)
-	return exec.CommandContext(ctx, r.path(), args...).Run()
+	return r.command(ctx, args...).Run()
 }
 
 // ParseProgress reads one PROG line of the progress template.

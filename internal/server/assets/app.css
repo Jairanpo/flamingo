@@ -587,6 +587,11 @@ body.hasfold #jobs { bottom:62px; }
            border:1px solid var(--slate); border-radius:14px;
            padding:12px 16px; margin-bottom:18px; box-shadow:var(--shadow); }
 #viewbar[hidden] { display:none; }
+/* "YouTube renamed this": a line of its own under the name, until answered. */
+#renamed { flex-basis:100%; display:flex; flex-wrap:wrap; align-items:center; gap:8px 10px;
+  padding:8px 12px; border-radius:14px; background:var(--well); font-size:13.5px; }
+#renamed[hidden] { display:none; }
+#renamed b { font-weight:700; }
 .vbhead { display:flex; flex-direction:column; min-width:0; flex:1 1 260px; }
 #vbname { margin:0; font-size:20px; font-weight:700; color:var(--accent);
           line-height:1.25; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
@@ -682,9 +687,11 @@ button:not(:disabled):active, .chip:active { transform:scale(.92);
 }
 
 /* ── Mini player ─────────────────────────────────────────────────────────
-   Audio plays in a paper bar docked at the foot of the window, like a music
+   Audio plays in a butter-cream bar docked at the foot of the window, like a music
    app's: who is playing on the left, the controls in the middle, speed and
-   the way to the full view on the right. The page stays usable above it. */
+   the way to the full view on the right. The page stays usable above it.
+   Butter cream: halfway between the paper cards and the warm honey, so it
+   reads as its own thing over the cards without glaring. */
 #mbar { display:none; }
 #pshrink[hidden] { display:none; }
 #pshrink { position:absolute; top:12px; left:16px; z-index:2; border:1px solid rgba(242,232,213,.25);
@@ -694,12 +701,12 @@ button:not(:disabled):active, .chip:active { transform:scale(.92);
 #player.on.mini { inset:auto 12px 12px 12px; padding:0; overflow:visible; background:none; z-index:45; }
 #player.mini > :not(#mbar) { display:none; }
 #player.mini #mbar {
-  --panel:var(--paper); --well:var(--paper-well); --edge:var(--paper-edge);
-  --ink:var(--paper-ink); --dim:var(--paper-dim);
+  --panel:#e3cb99; --well:#d9bd86; --edge:#ccad74; --ink:var(--paper-ink); --dim:#7d6346;
+  --mfill:var(--leaf); --mlip:#bb9a62;
   display:grid; grid-template-columns:minmax(0,1fr) minmax(0,2fr) minmax(0,1fr);
   align-items:center; gap:16px; height:76px; padding:8px 14px;
   background:var(--panel); color:var(--ink); border:2px solid var(--edge); border-radius:20px;
-  box-shadow:0 3px 0 var(--paper-lip), 0 10px 30px rgba(0,0,0,.45); color-scheme:light; }
+  box-shadow:0 3px 0 var(--mlip), 0 10px 30px rgba(0,0,0,.45); color-scheme:light; }
 #mbar button { border:0; background:none; color:inherit; font:inherit; cursor:pointer; }
 #mbar .mwho { display:flex; align-items:center; gap:10px; min-width:0; padding:0; text-align:left; }
 #mthumb { flex:0 0 auto; width:96px; height:54px; object-fit:cover; border-radius:10px;
@@ -721,7 +728,7 @@ button:not(:disabled):active, .chip:active { transform:scale(.92);
   font-size:11.5px; color:var(--dim); font-variant-numeric:tabular-nums; }
 #mseek { flex:1; min-width:0; height:6px; margin:0; appearance:none; -webkit-appearance:none;
   border-radius:6px; cursor:pointer;
-  background:linear-gradient(to right, var(--leaf) var(--p,0%), var(--edge) var(--p,0%)); }
+  background:linear-gradient(to right, var(--mfill) var(--p,0%), var(--edge) var(--p,0%)); }
 #mseek::-webkit-slider-thumb { -webkit-appearance:none; width:14px; height:14px; border-radius:50%;
   background:var(--paper-hi); border:2px solid #5d9e58; }
 #mseek::-moz-range-thumb { width:12px; height:12px; border-radius:50%;

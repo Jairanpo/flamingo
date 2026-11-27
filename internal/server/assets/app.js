@@ -681,7 +681,26 @@ function paintViewbar() {
     state.collections.find(c => String(c.id) === String(state.collection));
   $("#vbname").textContent = src ? `${glyph(src)} ${src.name}`
                            : coll ? `✦ ${coll.name}` : "Everything";
+  // A playlist's Flamingo name can differ from YouTube's; hovering tells.
+  $("#vbname").title = src && src.youtube && src.youtube !== src.name
+    ? `On YouTube: ${src.youtube}` : "";
+  const rn = $("#renamed");
+  rn.hidden = !(src && src.renamed);
+  if (rn.hidden) return;
+  $("#rnnew").textContent = `“${src.youtube}”`;
+  $("#rnkeep").textContent = `Keep “${src.name}”`;
 }
+// YouTube renamed a playlist: take its new name, or keep yours. Asked once
+// per rename either way.
+async function answerRename(take) {
+  const src = state.sources.find(s => s.id === state.source);
+  if (!src) return;
+  try { await post("/api/rename", {source: src.id, take}); }
+  catch (e) { alert(e.message); }
+  refresh();
+}
+$("#rntake").onclick = () => answerRename(true);
+$("#rnkeep").onclick = () => answerRename(false);
 
 function paintViewProgress() {
   const it = state.source ? state.sources.find(s => s.id === state.source)

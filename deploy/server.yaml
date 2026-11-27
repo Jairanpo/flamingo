@@ -20,5 +20,8 @@ auth:
 
 ytdlp:
   path: yt-dlp
-  extra_args: []
+  # IPv4 only: the container has no working IPv6 route, and yt-dlp waits
+  # ~20 s on each IPv6 address before trying IPv4, which ran every listing
+  # and stream past its time limit.
+  extra_args: ["--force-ipv4"]
   stream_max_height: 1080   # the quality a stream starts at

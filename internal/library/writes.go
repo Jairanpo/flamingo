@@ -202,6 +202,28 @@ func (l *Lib) updateSource(ctx context.Context, tx pgx.Tx, id, set string, args 
 	return nil
 }
 
+// AnswerRename settles a playlist YouTube has renamed: take the new name
+// as the label, or keep the label. Either way the question is answered for
+// this YouTube title, and comes back only if it changes again.
+func (l *Lib) AnswerRename(ctx context.Context, id string, take bool) error {
+	if table, _, _, _ := sourceTable(id); table != "user_playlists" {
+		return ErrUnknownSource
+	}
+	tag, err := l.Pool.Exec(ctx, `
+		UPDATE user_playlists up
+		   SET uspl_label = CASE WHEN $3 THEN p.play_title ELSE COALESCE(up.uspl_label, up.uspl_seen_title, p.play_title) END,
+		       uspl_seen_title = p.play_title
+		  FROM playlists p
+		 WHERE p.play_id = up.play_id AND up.user_id = $1 AND up.play_id = $2`, l.User, id, take)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrUnknownSource
+	}
+	return nil
+}
+
 func (l *Lib) SetShelved(ctx context.Context, id string, value bool) error {
 	_, _, prefix, _ := sourceTable(id)
 	return pgx.BeginFunc(ctx, l.Pool, func(tx pgx.Tx) error {

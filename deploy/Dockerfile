@@ -2,16 +2,23 @@
 FROM golang:1.26 AS build
 WORKDIR /src
 COPY go.mod go.sum ./
-RUN go mod download
+RUN --mount=type=cache,target=/go/pkg/mod go mod download
 COPY cmd ./cmd
 COPY internal ./internal
 ARG VERSION=dev
-RUN CGO_ENABLED=0 go build -trimpath \
+# Go's build cache survives between builds in a cache mount, so a redeploy
+# recompiles only what changed (about 2 s instead of 24 s for all five).
+# The modules live in one too, so the mount above and these share them.
+RUN --mount=type=cache,target=/root/.cache/go-build \
+    --mount=type=cache,target=/go/pkg/mod \
+    CGO_ENABLED=0 go build -trimpath \
       -ldflags "-s -w -X github.com/Jairanpo/flamingo/internal/cli.version=${VERSION}" \
       -o /out/flamingo ./cmd/flamingo
 # The same program for every computer that downloads, offered in the app
 # (Downloads → set up this computer): it runs there as the agent.
-RUN for t in linux/amd64/flamingo-linux-amd64 windows/amd64/flamingo-windows-amd64.exe \
+RUN --mount=type=cache,target=/root/.cache/go-build \
+    --mount=type=cache,target=/go/pkg/mod \
+    for t in linux/amd64/flamingo-linux-amd64 windows/amd64/flamingo-windows-amd64.exe \
              darwin/arm64/flamingo-macos-arm64 darwin/amd64/flamingo-macos-amd64; do \
       os=${t%%/*}; rest=${t#*/}; arch=${rest%%/*}; file=${rest#*/}; \
       CGO_ENABLED=0 GOOS=$os GOARCH=$arch go build -trimpath \
@@ -24,7 +31,7 @@ RUN for t in linux/amd64/flamingo-linux-amd64 windows/amd64/flamingo-windows-amd
 FROM debian:bookworm-slim
 # yt-dlp's standalone build, pinned and checked against the release's own
 # checksum list. YouTube changes often: bump the version when listings break.
-ARG YTDLP_VERSION=2026.08.19
+ARG YTDLP_VERSION=2026.11.23
 RUN apt-get update \
  && apt-get install -y --no-install-recommends ca-certificates curl \
  && rm -rf /var/lib/apt/lists/* \

@@ -123,6 +123,7 @@ func (s *Server) routesAPI(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/pin", s.requireUser(s.apiPin))
 	mux.HandleFunc("POST /api/complete", s.requireUser(s.apiComplete))
 	mux.HandleFunc("POST /api/forget", s.requireUser(s.apiForget))
+	mux.HandleFunc("POST /api/rename", s.requireUser(s.apiRename))
 	mux.HandleFunc("POST /api/toggl", s.requireUser(s.apiToggl))
 	mux.HandleFunc("POST /api/topic", s.requireUser(s.apiTopic))
 	mux.HandleFunc("POST /api/sort", s.requireUser(s.apiSort))
@@ -146,6 +147,10 @@ type sourceJSON struct {
 	Total     int     `json:"total"`
 	Have      int     `json:"have"`
 	Seen      int     `json:"seen"`
+	// Playlists: the name on YouTube, and true when it changed and the
+	// user has not said whether to take it.
+	YouTube *string `json:"youtube,omitempty"`
+	Renamed bool    `json:"renamed,omitempty"`
 }
 
 type pinJSON struct {
@@ -246,6 +251,7 @@ func (s *Server) apiState(w http.ResponseWriter, r *http.Request) {
 				Creator: g.Creator, Handle: src.Handle, Group: g.Key, Topic: src.Topic, Owner: owner,
 				TgChannel: tg, Shelved: src.Shelved, Pinned: src.Pinned, Completed: src.CompletedAt,
 				Total: src.Total, Have: src.Have, Seen: src.Seen,
+				YouTube: src.YouTubeTitle, Renamed: src.Renamed,
 			})
 			if src.ID == q.Source && src.Kind == "playlist" {
 				isPlaylist = true
@@ -449,6 +455,19 @@ type inputErr string
 
 func (e inputErr) Error() string { return string(e) }
 func (e inputErr) Unwrap() error { return library.ErrBadInput }
+
+// apiRename answers "YouTube renamed this playlist": {source, take}.
+func (s *Server) apiRename(w http.ResponseWriter, r *http.Request) {
+	s.withLib(func(ctx context.Context, l *library.Lib, b map[string]any) (any, error) {
+		if err := l.AnswerRename(ctx, str(b, "source"), truthy(b, "take", false)); err != nil {
+			if errors.Is(err, library.ErrUnknownSource) {
+				return nil, inputErr("unknown playlist")
+			}
+			return nil, err
+		}
+		return map[string]any{"ok": true}, nil
+	})(w, r)
+}
 
 func (s *Server) apiForget(w http.ResponseWriter, r *http.Request) {
 	s.withLib(func(ctx context.Context, l *library.Lib, b map[string]any) (any, error) {
